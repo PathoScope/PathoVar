@@ -100,9 +100,16 @@ class EntrezEUtilsDriver(object):
         get_nucleotide_sequences_response = requests.get(get_nucleotides_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode=mode)))
         get_nucleotide_sequences_response.raise_for_status()
         # The genome sequence should be located in get_genome_response.text
-        
         return get_nucleotide_sequences_response.text
 
+    def find_protein_by_gene_id(self, gene_id, form = 'fasta', mode = 'text'):
+        # Just in case it was passed as an int
+        gene_id = str(gene_id)
+        if self.verbose: print("Fetching data from Entrez")
+        get_protein_sequences_response = requests.get(get_protein_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode = mode)))
+        get_protein_sequences_response.raise_for_status()
+        return get_protein_sequences_response.text
+        
     def find_gene_by_gene_id(self, gene_id, form = 'xml'):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
@@ -112,177 +119,6 @@ class EntrezEUtilsDriver(object):
         if self.verbose:
             open(gene_id+".gene." + form, 'w').write(get_gene_response.text)
         return get_gene_response.text
-
-    def find_nucleotide_annotations_by_gene_id(self, gene_id, mode = 'xml'):
-        # Just in case it was passed as an int
-        gene_id = str(gene_id)
-        result = self.find_nucleotides_by_gene_id(gene_id, form = 'genbank', mode = mode)
-        if self.verbose:
-            open(gene_id + '.genbank.' + mode, 'w').write(result)
-        return GenBankFeatureFile(result, self.opts)
-
-    def find_protein_annotations_by_gene_id(self, gene_id, mode = 'xml'):
-        # Just in case it was passed as an int
-        gene_id = str(gene_id)
-        get_protein_sequences_response = requests.get(get_protein_by_gene_id.format(**dict(gene_id=gene_id, form='genbank', mode = mode)))
-        get_protein_sequences_response.raise_for_status()
-        if self.verbose:
-            open(gene_id + '.peptide_record.' + mode, 'w').write(get_protein_sequences_response.text)
-        return GenBankFeatureFile( get_protein_sequences_response.text, self.opts)
-
-
-
-## GenBankFeatureFile
-# XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
-# the XML definition of a GenBank flat file.
-class GenBankFeatureFile(object):
-    def __init__(self, xml, opts):
-        self.parser = BeautifulSoup(xml)
-        self.opts = opts
-        self.verbose = opts['verbose']
-        self.chromosome = self.parser.find('iupacna').get_text()
-        self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self), self.parser.find_all("seq-entry")) }
-        self.features = map(GenBankFeature, self.parser.find_all("seq-feat"))
-        
-        # Features are subsets of Entries. It would be a good idea to compress them to a single entity
-        # later. Entries capture finer resolution details about a particular gene
-        for feature in self.features:
-             if feature.gid in self.entries:
-                 feature.title = self.entries[feature.gid].title
-        
-        # Keep only features that are not complete genomes
-        self.features = [feature for feature in self.features if "complete genome" not in feature.title]
-        
-        # Each feature occurs multiple times in the file, redundant with its multiple regions. The complete
-        # genomic span is the largest span. This works for single-span entities. 
-        feature_dict = {}
-        for feat in self.features:
-            if feat.gid not in feature_dict:
-                feature_dict[feat.gid] = feat
-            else:
-                if feat.end - feat.start > feature_dict[feat.gid].end - feature_dict[feat.gid].start:
-                    feature_dict[feat.gid] = feat
-        self.features = feature_dict.values()
-        
-        # Using the genomic position data just computed, update coordinate information for the 
-        # related entries
-        for feat in self.features:
-            entry = self.entries[feat.gid]
-            entry.update_genome_position(feat)
-
-
-    def locate_snp_site(self, snp_loc):
-        contains = []
-        last_end = -1
-        for entry in self.entries.values():
-            if snp_loc >= entry.start and snp_loc <= entry.end:
-                contains.append(entry)
-                if self.verbose: print("SNP Location %s mapped within %r" % (snp_loc, entry))
-
-        return contains
-
-    def __repr__(self):
-        rep = "(" + ', '.join(map(repr, self.features)) + ")"
-        return rep
-
-## GenBankFeature
-# XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
-# the substructure of a GenBank flat file related to a single sequence feature
-class GenBankFeature(object):
-    def __init__(self, element, title = None):
-        self.element = element
-        self.gid = element.find('seq-id_gi').get_text()
-        # Some features, especially in complex organisms, will have multi-part features. 
-        # Capture all of that data
-        self.starts = map(lambda x: int(x.get_text()), self.element.find_all('seq-interval_from'))
-        self.ends = map(lambda x: int(x.get_text()), self.element.find_all('seq-interval_to'))
-
-        # and set the extrema to the global start and stop
-        self.start = min(self.starts)
-        self.end = max(self.ends)
-
-        # Likely to be empty
-        self.dbxref = element.find_all('dbtag_db')
-        self.dbxref_type = map(lambda x: x.find("dbtag_db"), self.dbxref)
-        self.dbxref_id = map(lambda x: x.find("object-id_id"), self.dbxref)
-
-        self.title = title
-
-    def __repr__(self):
-        rep = "<gi|%(gid)s (%(start)r, %(end)r %(title)s>" % self.__dict__
-        return rep
-
-## GenBankSeqEntry
-# XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
-# the substructure of a GenBank flat file related to a single sequence entry
-class GenBankSeqEntry(object):
-    def __init__(self, element, owner):
-        self.element = element
-        self.owner = owner
-
-        self.gid = element.find('seq-id_gi').get_text()
-        self.accession = element.find('textseq-id_accession').get_text()
-        
-        # The coordinates in the seq-entry itself are relative to their own start and stop points. 
-        # The genomic coordinates must be inferred from the genomic seq-feat tags
-        self.starts = None
-        self.ends   = None
-        self.start  = None
-        self.end    = None
-        
-        self.amino_acid_sequence = element.find('iupacaa')
-        # Prune later once starts and ends are set
-        self.nucleotide_sequence = owner.chromosome
-
-        self.title = element.find('seqdesc_title').get_text()
-        self.annotations = map(GenBankAnnotation, element.find_all("bioseq_annot"))
-        
-        self._id = element.find_all('bioseq_id')
-        self._desc = element.find_all("bioseq_descr")
-        self._inst = element.find_all("bioseq_inst")
-        self._annot = element.find_all("bioseq_annot")
-
-    def update_genome_position(self, feature):
-        self.starts = feature.starts
-        self.ends   = feature.ends  
-        self.start  = feature.start 
-        self.end    = feature.end   
-
-        self.nucleotide_sequence = self.nucleotide_sequence[self.start:self.end]
-
-    def __repr__(self):
-        rep = "<gi|%(gid)s Title=%(title)s, ACC=%(accession)s, ANNO=%(annotations)s>" % self.__dict__
-        return rep
-
-GenBankCDD = namedtuple("GenBankCDD", ["start", "end", "name", "definition", "e_value"])
-class GenBankAnnotation(object):
-    def __init__(self, element):
-        self.element = element
-
-        self.start = map(lambda x: int(x.get_text()), element.find_all("seq-interval_from"))
-        self.end = map(lambda x: int(x.get_text()), element.find_all("seq-interval_to"))
-        
-        self.regions = [] #list(map(lambda x: x.get_text(), element.find_all("seqfeatdata_region")))
-        self.name = ', '.join(map(lambda x: x.get_text(), element.find_all("prot-ref_name_e")))
-        self.raw_extensions = element.find_all("seq-feat_ext")
-        for raw_ext in self.raw_extensions:
-            obj_type = str(raw_ext.find("object-id_str").get_text())
-            obj_data = map(lambda x: x.get_text(), raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
-            if obj_type == "cddScoreData":
-                start = int(obj_data[0])
-                end = int(obj_data[1])
-                definition = str(obj_data[2]).replace('\n','')
-                name = str(obj_data[3]).replace('\n','')
-                e_value = float(obj_data[5])
-                ext = GenBankCDD(start, end, name, definition, e_value)
-                self.regions.append(ext)
-            else:
-                raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
-
-    def __repr__(self):
-        rep = "Annotation(Starts=%(start)s, Ends=%(end)s, Name=%(name)s, Regions=%(regions)s)" % self.__dict__
-        return rep
-
 
 ## EntrezEUtilsDriverException
 # Parent class for capturing all EUtils generated exceptions. Exception class 
@@ -294,7 +130,4 @@ class EntrezEUtilsDriverException(Exception):
 # Exception indicating the organism indicated by org_name was not 
 # found on Entrez
 class OrganismNotFoundException(EntrezEUtilsDriverException):
-    pass
-
-class UnknownAnnotationException(EntrezEUtilsDriverException):
     pass
