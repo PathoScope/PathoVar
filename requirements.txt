@@ -1,0 +1,4 @@
+Pathovar
+PyVCF==0.6.4
+requests==2.1.0
+beautifulsoup4==4.3.2
