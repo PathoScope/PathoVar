@@ -41,9 +41,11 @@ class SpeciesExtractNameSAMParser(object):
         return species_data[:5]
 
 class SAMParser(object):
-    def __init__(self, file_name, **opts):
+    def __init__(self, file_name, out= None, **opts):
         self.file_name = file_name
         self.opts = opts
+        if out != None:
+            self.opts['out'] = out
         self.headers = []
         self.reads = defaultdict(list)
         self.line = None
@@ -65,11 +67,17 @@ class SAMParser(object):
         for read in reads:
             read.rname = replacement
         header.definition = replacement
-        header[0].rest = ["SO:unsorted"]
+        self.headers[0].rest = ["SO:unsorted"]
+
+    def remove_reference(self, target):
+        header = filter(lambda x: x.definition == target, self.headers)[0]
+        del self.reads[header.definition]
+        del header
+        self.headers[0].rest = ["SO:unsorted"]
 
     def write_out(self):
         outfile = None
-        if "out" in self.opts:
+        if  "out" in self.opts:
             outfile = self.opts['out']
         else:
             outfile = self.file_name + '.filt.sam'
@@ -128,10 +136,10 @@ class SAMRead(object):
         rep = "{qname}\t{flag}\t{rname}\t{pos}\t{mapq}\t{cigar}\t{rnext}\t{pnext}\t{tlen}\t{seq}\t{qual}\t{aln}".format( **self.__dict__ )
         return rep
 
-
-
 ##
 gene_id = re.compile(r'gi\|([^\|]+)\|')
+##
+genbank_id = re.compile(r'gb\|([^\|]+)\|')
 ##
 tax_id = re.compile(r'ti\|([^\|]+)\|')
 ##
@@ -150,6 +158,9 @@ def defline_parser(line):
     gene_id_matches = gene_id.findall(line)
     if len(gene_id_matches) > 0:
         result['gene_id'] = gene_id_matches[0]
+    genbank_id_matches = genbank_id.findall(line)
+    if len(genbank_id_matches) > 0:
+        result['genbank_id'] = genbank_id_matches[0]
     if len(result.keys()) == 0:
         raise DeflineUnparsedException("Could Not Parse Defline: %s" % line)
     return result
@@ -273,3 +284,100 @@ class Namespace:
 
     def __repr__(self):
         return str(self.__dict__)
+
+
+## FastaParser
+# Parse a Fasta format file and provide basic filtering
+# utilities to keep sequences that meet a certain criteria
+class FastaParser(object):
+    def __init__(self, file_path, **opts):
+        self.file_path = file_path
+        self.outfile_path = opts.get("out", file_path + '.filtered')
+        self.sequences = []
+
+    ## parse_file
+    # Extracts all sequences from the fasta file. on disk, 
+    # converting them into `SequenceRecords` using `process_record`
+    def parse_file(self):
+        defline = ''
+        sequence = ''
+        for line in open(self.file_path, 'r'):
+            match = re.search(r'^>(?P<defline>.+)\n', line)
+            if match:
+                if defline != '':
+                    self.process_record(defline, sequence)
+                defline = match.groupdict()['defline']
+                sequence = ''
+            else:
+                sequence += line
+        self.process_record(defline, sequence)
+
+
+    ## process_record
+    # Combine a defline and a sequence into a 
+    # `SequenceRecord` object
+    def process_record(self, defline, sequence):
+        record = SequenceRecord(defline, sequence)
+        self.sequences.append(record)
+
+    ## filter_by_org_name
+    # Filter the read sequences, keeping only those whose
+    # `org_name` field matches the regular expression provided
+    def filter_by_org_name(self, org_name_regex):
+        keepers = [record for record in self.sequences if re.search(org_name_regex, record.org_name)]
+        self.sequences = keepers
+        self.outfile_path += '.org_' + re.sub(r'[/\\:*?"<>|{}]', '', org_name_regex)
+
+    ## filter_by_tax_ids
+    # Filter the read sequences, keeping only those whose
+    # `tax_id` field is in the set of tax_ids provided
+    def filter_by_tax_ids(self, tax_ids):
+        tax_id = map(str, tax_ids)
+        keepers = [record for record in self.sequences if record.tax_id in tax_ids]
+        self.sequences = keepers
+        self.outfile_path += '.tis_' + '_'.join(tax_ids)
+    
+    ## filter_by_gene_ids
+    # Filter the read sequences, keeping only those whose
+    # `gene_id` field is in the set of gene_ids provided
+    def filter_by_gene_ids(self, gene_ids):
+        gene_ids = map(str, gene_ids)
+        keepers = [record for record in self.sequences if record.gene_id in gene_ids]
+        self.sequences = keepers
+        self.outfile_path += '.gis_' + '_'.join(gene_ids)
+
+    def filter_by_defline(self, defline_regex):
+        keepers = [record for record in self.sequences if re.search(defline_regex, record.defline)]
+        self.sequences = keepers
+
+
+    ## write_output
+    # 
+    def write_output(self):
+        outfile = open(self.outfile_path + '.fa', 'w')
+        for record in self.sequences:
+            outfile.write(record.to_fasta_format())
+        outfile.close()
+        return outfile.name
+
+class SequenceRecord(object):
+    def __init__(self, defline, sequence):
+        self.defline = defline
+        defline_fields = defline_parser(defline)
+        self.org_name = defline_fields.get('org_name','-')
+        self.tax_id = defline_fields.get('tax_id','-')
+        self.gene_id = defline_fields.get('gene_id', '-')
+
+        self.sequence = sequence
+        self.attributs = dict()
+
+    def to_fasta_format(self):
+        entry = ">" + self.defline + '\n'
+        entry += self.sequence + '\n'
+        return entry
+
+    def __repr__(self):
+        return "<" + self.defline + ">"
+
+
+

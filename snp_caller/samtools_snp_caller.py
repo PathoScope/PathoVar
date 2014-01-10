@@ -1,8 +1,10 @@
 ##@samtools_snp_caller.py
 # 
+import os
+import sys
+import subprocess
 
 import snp_caller_base
-import os, sys, subprocess
 
 ##SamtoolsSNPCaller
 # Defines the logic for using Samtools as the SNP Caller. 
@@ -14,29 +16,26 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
 # @param bin_dir The location of the `samtools` executable files
     def __init__(self, opts, bin_dir = ''):
         snp_caller_base.SNPCallerBase.__init__(self, opts, bin_dir)
+        self.intermediary_files = []
 
 ##
 #
-    def get_reference_genome(self, tax_id = None, org_name = None, gene_id = None, source = None, **kwargs):
-        return snp_caller_base.SNPCallerBase.get_reference_genome(self, tax_id, org_name, gene_id, source, **kwargs)
+    def get_reference_genome(self, source, tax_ids = None, org_name = None, gene_ids = None, **kwargs):
+        return snp_caller_base.SNPCallerBase.get_reference_genome(self, source, tax_ids = tax_ids, org_name = org_name, gene_ids = gene_ids, **kwargs)
 
 ##Call SNPs
 # @param self The object reference
 # @param output_sam_file The path to the target .sam file
 # @param source The path to the reference genome of all of the organisms of interest
-    def call_snps(self, output_sam_file, tax_id = None, org_name = None, gene_id = None, source = None, **kwargs):
-        genome_path = self.get_reference_genome(tax_id = tax_id, org_name = org_name, source = source)
+    def call_snps(self, output_sam_file,source , tax_ids = None, org_name = None, gene_ids = None,  **kwargs):
+        genome_path = self.get_reference_genome(source, tax_ids = tax_ids, org_name = org_name, gene_ids = gene_ids)
         indexed_reference_genome = self._index_reference_genome(genome_path)
         bam_file = self._sam_to_bam(genome_path, *[output_sam_file])
         sorted_bam_files = self._sort_bam(*bam_file)
         indexed_bam_files = self._index_bam(*sorted_bam_files)
         vcf_files = self._mpileup_bam_files(genome_path, *sorted_bam_files)
         if self.opts['clean']:
-            self._clean_up_files(*bam_file)
-            self._clean_up_files(*sorted_bam_files)
-            self._clean_up_files(*indexed_bam_files)
-            self._clean_up_files(indexed_reference_genome)
-            self._clean_up_files(map(lambda x: x + '.raw.bcf', *sorted_bam_files))
+            self._clean_up_files(*self.intermediary_files)
         return vcf_files[0]
 ## _index_reference_genome
 # Runs Samtools's faidx command on a given reference genome file in fasta format
@@ -63,6 +62,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred when trying to convert %s to a BAM file" % sam_file)
             bam_files.append(bam_file)
+        self.intermediary_files.extend(bam_files)
         return bam_files
 ## _sort_bam
 # Calls samtools sort over an arbitrary list of .bam files
@@ -77,6 +77,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred when trying to sort %s" % bam_file)
             sorted_bam.append(sorted + '.bam')
+        self.intermediary_files.extend(sorted_bam)
         return sorted_bam
 ## _index_bam
 # Calls samtools index over an arbitrary list of sorted .bam files
@@ -91,6 +92,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occured when trying to index %s" % bam_file)
             indexed_bam_files.append(indexed)
+        self.intermediary_files.extend(indexed_bam_files)
         return indexed_bam_files
 ## _mpileup_bam_files
 # Perform SNP Calling using `samtools mpileup | bcftools view | vcfutils` 
@@ -116,7 +118,11 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             result = os.system('{bin_dir}bcftools view {intermediary} | {bin_dir}vcfutils.pl varFilter -D{max_read_depth} > {final_vcf}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during bcftools view | vcfutils.pl varFilter for %s" % bam_file)
+            result = os.system('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}.cns.fq'.format(**opts))
+            if result != 0:
+                raise snp_caller_base.SNPCallerException("An error occurred during vcfutils.pl vcf2fq %s" % bam_file)
             vcf_files.append(opts["final_vcf"])
+            self.intermediary_files.append(opts['intermediary'])
         return vcf_files
 
 ##_clean_up_files

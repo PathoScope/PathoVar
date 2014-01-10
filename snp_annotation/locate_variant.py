@@ -108,6 +108,49 @@ class AnnotatedVariant(vcf.model._Record):
 		rep = "Record(CHROM=%(CHROM)s, POS=%(POS)s, REF=%(REF)s, ALT=%(ALT)s), ANNO=%(annotations)s" % self.__dict__
 		return rep
 
+
+VariantTuple = namedtuple("VariantTuple",["alt_allele", "position"])
+class MutantSequenceFactory(object):
+
+	def __init__(self, gid, name, reference_sequence, variant_list = None, opts = None):
+		if variant_list is None:
+			variant_list = []
+		if opts is None:
+			opts = dict(verbose = False)
+		self.gid = gid
+		self.name = name
+		self.reference_sequence = reference_sequence
+		self.variants = variant_list
+		self.opts = opts
+		self.mutant_sequences = []
+
+	def compute_mutants(self):
+		for variant in self.variants:
+			
+			for alt in variant.ALT:
+				variant_tuple = VariantTuple(variant.alt, variant.POS, [])
+
+
+class MutantSequence(list):
+
+	## 
+	# variant_positions is a list of 3-tuples, (ALT_ALLELE, POSITION, MUTATION_TYPE_LIST)
+	def __init__(self, reference_sequence, variant_positions, annotations):
+		list.__init__(self, reference_sequence)
+		self.variant_positions = variant_positions
+		self.annotations = annotations
+		for variant in self.variant_positions:
+			self[variant[1]] = variant[0]
+			for annotation in self.annotations:
+				if annotation.start <= variant[1] <= annotation.end:
+					variant[2].append(annotation)
+					for region in annotation.regions:
+						if region.start <= variant[1] <= region.end:
+							variant[2].append(region)
+
+
+
+
 ## GenBankFeatureFile
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
