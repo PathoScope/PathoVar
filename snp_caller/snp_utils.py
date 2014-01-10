@@ -286,7 +286,7 @@ class Namespace:
         return str(self.__dict__)
 
 
-## FastaParser
+## 
 # Parse a Fasta format file and provide basic filtering
 # utilities to keep sequences that meet a certain criteria
 class FastaParser(object):
@@ -316,6 +316,8 @@ class FastaParser(object):
     ## process_record
     # Combine a defline and a sequence into a 
     # `SequenceRecord` object
+    # @param defline Fasta-format defline string
+    # @param sequence Single-character-to-residue string
     def process_record(self, defline, sequence):
         record = SequenceRecord(defline, sequence)
         self.sequences.append(record)
@@ -323,36 +325,36 @@ class FastaParser(object):
     ## filter_by_org_name
     # Filter the read sequences, keeping only those whose
     # `org_name` field matches the regular expression provided
+    # @param org_name_regex Regular expresson matching an organism name
+    # @sideeffect Modifies self.outfile_path to include the sanitized regular
+    # expression
     def filter_by_org_name(self, org_name_regex):
         keepers = [record for record in self.sequences if re.search(org_name_regex, record.org_name)]
         self.sequences = keepers
-        self.outfile_path += '.org_' + re.sub(r'[/\\:*?"<>|{}]', '', org_name_regex)
+        self.outfile_path += '.org_' + re.sub(r'[/\\:*?"<>|{}]', '_', org_name_regex)
 
-    ## filter_by_tax_ids
-    # Filter the read sequences, keeping only those whose
-    # `tax_id` field is in the set of tax_ids provided
-    def filter_by_tax_ids(self, tax_ids):
-        tax_id = map(str, tax_ids)
-        keepers = [record for record in self.sequences if record.tax_id in tax_ids]
+    ## 
+    # @param tax_ids_regex Regular expression to match taxonomy ids 
+    def filter_by_tax_ids(self, tax_ids_regex):
+        keepers = [record for record in self.sequences if re.search(tax_ids_regex, record.tax_id)]
         self.sequences = keepers
-        self.outfile_path += '.tis_' + '_'.join(tax_ids)
+        self.outfile_path += '.tis_' + re.sub(r'[/\\:*?"<>|{}]', '_', tax_ids_regex)
     
     ## filter_by_gene_ids
     # Filter the read sequences, keeping only those whose
     # `gene_id` field is in the set of gene_ids provided
-    def filter_by_gene_ids(self, gene_ids):
-        gene_ids = map(str, gene_ids)
-        keepers = [record for record in self.sequences if record.gene_id in gene_ids]
+    def filter_by_gene_ids(self, gene_ids_regex):
+        keepers = [record for record in self.sequences if re.search(gene_ids_regex, record.gene_id)]
         self.sequences = keepers
-        self.outfile_path += '.gis_' + '_'.join(gene_ids)
+        self.outfile_path += '.gis_' + re.sub(r'[/\\:*?"<>|{}]', '_', gene_ids_regex)
 
     def filter_by_defline(self, defline_regex):
         keepers = [record for record in self.sequences if re.search(defline_regex, record.defline)]
         self.sequences = keepers
 
 
-    ## write_output
-    # 
+    ## 
+    # Writes the remaining sequences to file in Fasta Format
     def write_output(self):
         outfile = open(self.outfile_path + '.fa', 'w')
         for record in self.sequences:

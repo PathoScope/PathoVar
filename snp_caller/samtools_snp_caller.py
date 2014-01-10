@@ -6,7 +6,8 @@ import subprocess
 
 import snp_caller_base
 
-##SamtoolsSNPCaller
+## 
+#
 # Defines the logic for using Samtools as the SNP Caller. 
 # Assumes that all of samtools, vcfutils and bcftools are 
 # stored in the same directory
@@ -18,17 +19,17 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
         snp_caller_base.SNPCallerBase.__init__(self, opts, bin_dir)
         self.intermediary_files = []
 
-##
+## 
 #
-    def get_reference_genome(self, source, tax_ids = None, org_name = None, gene_ids = None, **kwargs):
-        return snp_caller_base.SNPCallerBase.get_reference_genome(self, source, tax_ids = tax_ids, org_name = org_name, gene_ids = gene_ids, **kwargs)
+    def get_reference_genome(self, source, tax_ids_reg = None, org_names_reg = None, gene_ids_reg = None, **kwargs):
+        return snp_caller_base.SNPCallerBase.get_reference_genome(self, source, tax_ids_reg = tax_ids_reg, org_names_reg = org_names_reg, gene_ids_reg = gene_ids_reg, **kwargs)
 
-##Call SNPs
+## 
 # @param self The object reference
 # @param output_sam_file The path to the target .sam file
 # @param source The path to the reference genome of all of the organisms of interest
-    def call_snps(self, output_sam_file,source , tax_ids = None, org_name = None, gene_ids = None,  **kwargs):
-        genome_path = self.get_reference_genome(source, tax_ids = tax_ids, org_name = org_name, gene_ids = gene_ids)
+    def call_snps(self, output_sam_file,source , tax_ids_reg = None, org_names_reg = None, gene_ids_reg = None,  **kwargs):
+        genome_path = self.get_reference_genome(source, tax_ids_reg = tax_ids_reg, org_names_reg = org_names_reg, gene_ids_reg = gene_ids_reg)
         indexed_reference_genome = self._index_reference_genome(genome_path)
         bam_file = self._sam_to_bam(genome_path, *[output_sam_file])
         sorted_bam_files = self._sort_bam(*bam_file)
@@ -37,7 +38,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
         if self.opts['clean']:
             self._clean_up_files(*self.intermediary_files)
         return vcf_files[0]
-## _index_reference_genome
+## 
 # Runs Samtools's faidx command on a given reference genome file in fasta format
 # @param self The object reference
 # @param genome_path The path to the reference genome file in fasta format
@@ -48,7 +49,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             raise snp_caller_base.SNPCallerException("An error occurred when trying to index %s" % genome_path)
         indexed_genome = genome_path + '.fai'
         return indexed_genome
-##_sam_to_bam
+## 
 # Converts a an arbitrary number of .sam files to .bam files. Requires an indexed reference genome.
 # @param self The object reference
 # @param genome_path The path to the indexed genome fasta file
@@ -64,7 +65,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             bam_files.append(bam_file)
         self.intermediary_files.extend(bam_files)
         return bam_files
-## _sort_bam
+## 
 # Calls samtools sort over an arbitrary list of .bam files
 # @param bam_files An arbitrary list of paths to .bam files to be sorted.
 # @return A list of paths to the sorted .bam files.
@@ -79,7 +80,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             sorted_bam.append(sorted + '.bam')
         self.intermediary_files.extend(sorted_bam)
         return sorted_bam
-## _index_bam
+## 
 # Calls samtools index over an arbitrary list of sorted .bam files
 # @param bam_files An arbitrary list of sorted .bam files to be indexed
 # @return A list of paths to the indexed .bam files
@@ -94,7 +95,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             indexed_bam_files.append(indexed)
         self.intermediary_files.extend(indexed_bam_files)
         return indexed_bam_files
-## _mpileup_bam_files
+## 
 # Perform SNP Calling using `samtools mpileup | bcftools view | vcfutils` 
 # workflow piping. 
 # @param genome_path The path to a genome that has been indexed.
@@ -125,7 +126,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             self.intermediary_files.append(opts['intermediary'])
         return vcf_files
 
-##_clean_up_files
+## 
 # A simple helper function for removing arbitrary lists of intermediary 
 # files and indices that will be called when --clean is used
 # @param files_to_remove Arbitrary list of file paths to be removed

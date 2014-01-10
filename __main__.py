@@ -13,9 +13,9 @@ argparser.add_argument('--clean', action = "store_true")
 argparser.add_argument("--test", action = "store_true", required = False, help="Enter IPython Interactive Session after execution completes [Development Only]")
 
 target_args = argparser.add_argument_group("Target Organism Selection")
-target_args.add_argument("--organism-name", metavar = "ORG-REGEX", action="store", help = "A valid regular expression that matches organism names associated with reference genomes.")
-target_args.add_argument("--tax-ids", metavar = "TIs,", default='', action = "store", help = "A comma separated list of NCBI Taxonomy ID numbers for each genome to call against")
-target_args.add_argument("--gene-ids", metavar = "GIs,", default='', action = "store", help = "A comma separated list of NCBI Gene ID numbers for each genome to call against -- Experimental")
+target_args.add_argument("--org-names", metavar = "ORG-REGEX", action="store", help = "A valid regular expression that matches organism names associated with reference genomes.")
+target_args.add_argument("--tax-ids", metavar = "TI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Taxonomy ID numbers for each genome to call against")
+target_args.add_argument("--gene-ids", metavar = "GI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Gene ID numbers for each genome to call against -- Experimental")
 target_args.add_argument('-r',"--reference-genomes", metavar = "REF", action = "store", required=True, help = "path to a fasta file containing all reference genomes to call against")
 
 snp_caller_args = argparser.add_argument_group("SNP Caller Options")
@@ -31,15 +31,12 @@ def main(args):
 	opts['verbose'] = args.verbose
 	opts['clean'] = args.clean
 
-	args.tax_ids = args.tax_ids.split(',')
-	args.gene_ids = args.gene_ids.split(',')
-
 	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
 	if args.snp_caller == "samtools":
 		from snp_caller import samtools_snp_caller
 		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_binary_location, opts = opts)
 
-	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, org_name = args.organism_name, tax_ids = args.tax_ids, gene_ids = args.gene_ids)
+	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids)
 
 	snp_annotation_driver = None
 	if args.annotation_engine == "entrez":	
