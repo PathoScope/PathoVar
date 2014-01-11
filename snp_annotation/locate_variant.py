@@ -8,6 +8,7 @@ from collections import namedtuple
 
 ## Third Party Library Imports
 import vcf 
+from vcf.parser import _Info
 from bs4 import BeautifulSoup
 
 ## Internal Imports
@@ -26,20 +27,20 @@ class EntrezAnnotationMapper(object):
 		self.opts = opts
 		self.verbose = opts["verbose"]
 		self.entrez_handle = entrez_eutils.EntrezEUtilsDriver(self.opts)
-		self.variants = [var for var in vcf.VCFReader(open(vcf_file, 'r'))]
+		self.reader = vcf.VCFReader(open(vcf_file, 'r'))
+		self.variants = [var for var in self.reader]
 		self.annotated_variants = []
 		self.annotation_cache = dict()
+
+		self.reader.infos['ANNO'] = _Info('ANNO', 1, "String", "Information about the location of this variant")
 
 	##
 	#
 	def annotate_snp(self, variant):
 		ids = snp_utils.defline_parser(variant.CHROM)
-		if len(ids.keys()) == 0:
-			raise 
-		key = ids.keys()[0]
 		annotations = []
 		opt_args = dict(verbose=self.verbose)
-		if key is "gene_id":
+		if "gene_id" in ids:
 			if 'gene_id-'+ids['gene_id'] not in self.annotation_cache:
 				self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], opt_args)
 			annotations.extend(self.annotation_cache['gene_id-'+ids['gene_id']].locate_snp_site(variant.POS))
@@ -89,6 +90,13 @@ class EntrezAnnotationMapper(object):
 				print(anno_variant)
 			self.annotated_variants.append(anno_variant)
 
+
+	def write_annotated_vcf(self):
+		writer = vcf.Writer(open(self.vcf_file[:-4] + '.anno.vcf', 'w'), self.reader)
+		for variant in self.annotated_variants:
+			writer.write_record(variant)
+		writer.close()
+
 ##
 #
 class AnnotatedVariant(vcf.model._Record):
@@ -98,6 +106,7 @@ class AnnotatedVariant(vcf.model._Record):
 		vcf.model._Record.__init__(self, _record.CHROM, _record.POS, _record.ID, _record.REF,
 		 _record.ALT, _record.QUAL, _record.FILTER, _record.INFO, _record.FORMAT, 
 		 _record._sample_indexes, _record.samples)
+		self.INFO['ANNO'] = repr(annotations).replace(';', ',')
 		self.annotations = annotations
 
 	def __repr__(self):
@@ -109,44 +118,45 @@ class AnnotatedVariant(vcf.model._Record):
 		return rep
 
 
-VariantTuple = namedtuple("VariantTuple",["alt_allele", "position"])
-class MutantSequenceFactory(object):
-
-	def __init__(self, gid, name, reference_sequence, variant_list = None, opts = None):
-		if variant_list is None:
-			variant_list = []
-		if opts is None:
-			opts = dict(verbose = False)
-		self.gid = gid
-		self.name = name
-		self.reference_sequence = reference_sequence
-		self.variants = variant_list
-		self.opts = opts
-		self.mutant_sequences = []
-
-	def compute_mutants(self):
-		for variant in self.variants:
-			
-			for alt in variant.ALT:
-				variant_tuple = VariantTuple(variant.alt, variant.POS, [])
 
 
-class MutantSequence(list):
+# VariantTuple = namedtuple("VariantTuple",["alt_allele", "position"])
+# class MutantSequenceFactory(object):
 
-	## 
-	# variant_positions is a list of 3-tuples, (ALT_ALLELE, POSITION, MUTATION_TYPE_LIST)
-	def __init__(self, reference_sequence, variant_positions, annotations):
-		list.__init__(self, reference_sequence)
-		self.variant_positions = variant_positions
-		self.annotations = annotations
-		for variant in self.variant_positions:
-			self[variant[1]] = variant[0]
-			for annotation in self.annotations:
-				if annotation.start <= variant[1] <= annotation.end:
-					variant[2].append(annotation)
-					for region in annotation.regions:
-						if region.start <= variant[1] <= region.end:
-							variant[2].append(region)
+# 	def __init__(self, gid, name, reference_sequence, variant_list = None, opts = None):
+# 		if variant_list is None:
+# 			variant_list = []
+# 		if opts is None:
+# 			opts = dict(verbose = False)
+# 		self.gid = gid
+# 		self.name = name
+# 		self.reference_sequence = reference_sequence
+# 		self.variants = variant_list
+# 		self.opts = opts
+# 		self.mutant_sequences = []
+
+# 	def compute_mutants(self):
+# 		for variant in self.variants:
+# 			for alt in variant.ALT:
+# 				variant_tuple = VariantTuple(variant.alt, variant.POS, [])
+
+
+# class MutantSequence(list):
+
+# 	## 
+# 	# variant_positions is a list of 3-tuples, (ALT_ALLELE, POSITION, MUTATION_TYPE_LIST)
+# 	def __init__(self, reference_sequence, variant_positions, annotations):
+# 		list.__init__(self, reference_sequence)
+# 		self.variant_positions = variant_positions
+# 		self.annotations = annotations
+# 		for variant in self.variant_positions:
+# 			self[variant[1]] = variant[0]
+# 			for annotation in self.annotations:
+# 				if annotation.start <= variant[1] <= annotation.end:
+# 					variant[2].append(annotation)
+# 					for region in annotation.regions:
+# 						if region.start <= variant[1] <= region.end:
+# 							variant[2].append(region)
 
 
 
@@ -231,7 +241,7 @@ class GenBankFeature(object):
 		self.title = None
 
 	def __repr__(self):
-		rep = "<gi|%(gid)s (%(start)r, %(end)r %(title)s>" % self.__dict__
+		rep = "(gi|%(gid)s (%(start)r, %(end)r %(title)s)" % self.__dict__
 		return rep
 
 ## GenBankSeqEntry
@@ -273,7 +283,7 @@ class GenBankSeqEntry(object):
 		self.nucleotide_sequence = self.nucleotide_sequence[self.start:self.end]
 
 	def __repr__(self):
-		rep = "<gi|%(gid)s Title=%(title)s, ACC=%(accession)s, ANNO=%(annotations)s>" % self.__dict__
+		rep = "(gi|%(gid)s Title:%(title)s, ACC:%(accession)s, ANNO:%(annotations)s)" % self.__dict__
 		return rep
 
 GenBankCDD = namedtuple("GenBankCDD", ["start", "end", "name", "definition", "e_value", "mol_type"])
@@ -302,7 +312,7 @@ class GenBankAnnotation(object):
 				raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
 
 	def __repr__(self):
-		rep = "Annotation(Starts=%(start)s, Ends=%(end)s, Name=%(name)s, Regions=%(regions)s)" % self.__dict__
+		rep = "Annotation(Starts:%(start)s, Ends:%(end)s, Name:%(name)s, Regions:%(regions)s)" % self.__dict__
 		return rep
 
 class UnknownAnnotationException(Exception):

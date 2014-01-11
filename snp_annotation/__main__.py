@@ -21,6 +21,8 @@ def main():
 	annotation_mapper = locate_variant.EntrezAnnotationMapper(args.vcf_file, opts)
 	annotation_mapper.annotate_all_snps()
 
+	annotation_mapper.write_annotated_vcf()
+
 	if args.test:
 		import IPython
 		IPython.embed()

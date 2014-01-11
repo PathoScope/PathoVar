@@ -43,7 +43,7 @@ def main(args):
 		from snp_annotation import locate_variant
 		snp_annotation_driver = locate_variant.EntrezAnnotationMapper(variant_file, opts)
 		snp_annotation_driver.annotate_all_snps()
-
+		snp_annotation_driver.write_annotated_vcf()
 	if(args.test):
 		import IPython
 		IPython.embed()
