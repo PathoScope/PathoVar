@@ -26,18 +26,21 @@ snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
 snp_anno_args.add_argument('-a', '--annotation-engine', action='store', default = '', choices = ['entrez', 'snpeff', ''], help = "Select the program to annotate variants with")
 
 def main(args):
-	snp_caller_driver = None
 	opts = {}
 	opts['verbose'] = args.verbose
 	opts['clean'] = args.clean
 
 	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
+	
+	snp_caller_driver = None
+
 	if args.snp_caller == "samtools":
 		from snp_caller import samtools_snp_caller
 		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_binary_location, opts = opts)
 
 	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids)
-
+	consensus_sequences = variant_file + ".cns.fq"
+	
 	snp_annotation_driver = None
 	anno_vcf = None
 	if args.annotation_engine == "entrez":	

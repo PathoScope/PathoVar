@@ -59,7 +59,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
         bam_files = []
         for sam_file in sam_files:
             bam_file = sam_file[:-3] + 'bam'
-            result = os.system('%ssamtools view -hb -t %s -S %s > %s' % (self.bin_dir, genome_path, sam_file, bam_file))
+            result = os.system('%ssamtools view -hb -t %s -S %s > %s ' % (self.bin_dir, genome_path, sam_file, bam_file))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred when trying to convert %s to a BAM file" % sam_file)
             bam_files.append(bam_file)

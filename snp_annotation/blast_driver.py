@@ -8,7 +8,7 @@ import subprocess
 ## Location of the ncbi-blast+ binaries
 BLAST_BIN_DIR = ""
 
-def makeblastdb(in_file = None, dbtype='nucl'):
+def make_blastdb(in_file = None, dbtype='nucl'):
 	if in_file == None:
 		raise IOError("makeblastdb -in file not found")
 	args = {"in": in_file, "dbtype": dbtype}
@@ -28,7 +28,7 @@ def blastn(query, db_name, evalue = 0.001, num_threads = 1, outfmt = 5, outfile 
 	return call
 
 def main(args):
-	#makeblastdb(args[1])
+	#make_blastdb(args[1])
 	stdout, stderr = blastn(args[1], args[2]).communicate()
 	print(stdout)
 	print(stderr)

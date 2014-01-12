@@ -408,9 +408,8 @@ class SequenceRecord(object):
         self.org_name = defline_fields.get('org_name','-')
         self.tax_id = defline_fields.get('tax_id','-')
         self.gene_id = defline_fields.get('gene_id', '-')
-
         self.sequence = sequence
-        self.attributes = dict()
+        self.attributes = defline_fields
 
     def to_fasta_format(self):
         entry = ">" + self.defline

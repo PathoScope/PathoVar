@@ -1,6 +1,11 @@
 {
     "comprehensive_antibiotic_resistance_database": {
-        "path": "databases/comprehensive_antibiotic_resistance_database/",
-        "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
+        "data_urls" : [
+            "http://arpcard.mcmaster.ca/blast/db/nucleotide/AR-genes.fa.gz ", 
+            "http://arpcard.mcmaster.ca/blast/db/nucleotide/AT-genes.fa.gz ", 
+            "http://arpcard.mcmaster.ca/blast/db/nucleotide/ABS-genes.fa.gz", 
+            "http://arpcard.mcmaster.ca/obo-download/aro.obo" ],
+        "storage_path": "databases/comprehensive_antibiotic_resistance_database/",
+        "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py"
     }
 }

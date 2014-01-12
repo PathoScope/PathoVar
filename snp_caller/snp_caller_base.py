@@ -25,6 +25,7 @@ to a third party SNP Calling program.
             self.bin_dir += os.sep
         self.opts = opts
 
+
 ## get_reference_genome
 # Retrieves and indexes the appropriate reference genome.
 # @param source string reference to reference genome location
