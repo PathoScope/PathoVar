@@ -39,14 +39,16 @@ def main(args):
 	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids)
 
 	snp_annotation_driver = None
+	anno_vcf = None
 	if args.annotation_engine == "entrez":	
 		from snp_annotation import locate_variant
 		snp_annotation_driver = locate_variant.EntrezAnnotationMapper(variant_file, opts)
 		snp_annotation_driver.annotate_all_snps()
-		snp_annotation_driver.write_annotated_vcf()
+		anno_vcf = snp_annotation_driver.write_annotated_vcf()
 	if(args.test):
 		import IPython
 		IPython.embed()
+	return anno_vcf
 
 if __name__ == '__main__':
 	args = argparser.parse_args()

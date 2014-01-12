@@ -3,8 +3,10 @@
 # and annotated regions of genes.
 
 ## Standard Library Imports
+import json
+import re
 from time import sleep
-from collections import namedtuple
+from collections import OrderedDict
 
 ## Third Party Library Imports
 import vcf 
@@ -32,7 +34,7 @@ class EntrezAnnotationMapper(object):
 		self.annotated_variants = []
 		self.annotation_cache = dict()
 
-		self.reader.infos['ANNO'] = _Info('ANNO', 1, "String", "Information about the location of this variant")
+		self.reader.infos['GENE'] = _Info('GENE', 1, "String", "Gene containing this variant")
 
 	##
 	#
@@ -92,10 +94,12 @@ class EntrezAnnotationMapper(object):
 
 
 	def write_annotated_vcf(self):
-		writer = vcf.Writer(open(self.vcf_file[:-4] + '.anno.vcf', 'w'), self.reader)
+		output_file = self.vcf_file[:-4] + '.anno.vcf'
+		writer = vcf.Writer(open(output_file, 'w'), self.reader)
 		for variant in self.annotated_variants:
 			writer.write_record(variant)
 		writer.close()
+		return output_file
 
 ##
 #
@@ -106,7 +110,7 @@ class AnnotatedVariant(vcf.model._Record):
 		vcf.model._Record.__init__(self, _record.CHROM, _record.POS, _record.ID, _record.REF,
 		 _record.ALT, _record.QUAL, _record.FILTER, _record.INFO, _record.FORMAT, 
 		 _record._sample_indexes, _record.samples)
-		self.INFO['ANNO'] = repr(annotations).replace(';', ',')
+		self.INFO['GENE'] = map(lambda x: x.to_info_field(), annotations)
 		self.annotations = annotations
 
 	def __repr__(self):
@@ -117,12 +121,8 @@ class AnnotatedVariant(vcf.model._Record):
 		rep = "Record(CHROM=%(CHROM)s, POS=%(POS)s, REF=%(REF)s, ALT=%(ALT)s), ANNO=%(annotations)s" % self.__dict__
 		return rep
 
-
-
-
 # VariantTuple = namedtuple("VariantTuple",["alt_allele", "position"])
 # class MutantSequenceFactory(object):
-
 # 	def __init__(self, gid, name, reference_sequence, variant_list = None, opts = None):
 # 		if variant_list is None:
 # 			variant_list = []
@@ -142,7 +142,6 @@ class AnnotatedVariant(vcf.model._Record):
 
 
 # class MutantSequence(list):
-
 # 	## 
 # 	# variant_positions is a list of 3-tuples, (ALT_ALLELE, POSITION, MUTATION_TYPE_LIST)
 # 	def __init__(self, reference_sequence, variant_positions, annotations):
@@ -241,7 +240,7 @@ class GenBankFeature(object):
 		self.title = None
 
 	def __repr__(self):
-		rep = "(gi|%(gid)s (%(start)r, %(end)r %(title)s)" % self.__dict__
+		rep = "(gi:%(gid)s, %(start)r, %(end)r, %(title)s)" % self.__dict__
 		return rep
 
 ## GenBankSeqEntry
@@ -283,36 +282,49 @@ class GenBankSeqEntry(object):
 		self.nucleotide_sequence = self.nucleotide_sequence[self.start:self.end]
 
 	def __repr__(self):
-		rep = "(gi|%(gid)s Title:%(title)s, ACC:%(accession)s, ANNO:%(annotations)s)" % self.__dict__
+		rep = "(gi:%(gid)s, Title:%(title)s, ACC:%(accession)s, ANNO:%(annotations)s)" % self.__dict__
 		return rep
 
-GenBankCDD = namedtuple("GenBankCDD", ["start", "end", "name", "definition", "e_value", "mol_type"])
+	def to_json(self):
+		ref_dict = OrderedDict()
+		ref_dict["gid"] = self.gid
+		ref_dict["accession"] = self.accession
+		ref_dict["starts"] = self.starts
+		ref_dict["ends"] = self.ends
+		ref_dict["title"] = self.title
+		ref_dict["annotations"] = {k:v.__dict__ for k,v in self.annotations.items()}
+		return json.dumps(ref_dict)
+
+	def to_info_field(self):
+		rep = "(%(gid)s|%(title)s|%(accession)s)" % self.__dict__
+		rep = re.sub(r'[^a-zA-Z0-9_\(\)\|]', '_', rep)
+		return rep
+
 class GenBankAnnotation(object):
 	def __init__(self, element):
-		self.element = element
-
 		self.start = map(lambda x: int(x.get_text()), element.find_all("seq-interval_from"))
 		self.end = map(lambda x: int(x.get_text()), element.find_all("seq-interval_to"))
 		
 		self.regions = [] #list(map(lambda x: x.get_text(), element.find_all("seqfeatdata_region")))
 		self.name = ', '.join(map(lambda x: x.get_text(), element.find_all("prot-ref_name_e")))
-		self.raw_extensions = element.find_all("seq-feat_ext")
-		for raw_ext in self.raw_extensions:
+		raw_extensions = element.find_all("seq-feat_ext")
+		for raw_ext in raw_extensions:
 			obj_type = str(raw_ext.find("object-id_str").get_text())
 			obj_data = map(lambda x: x.get_text(), raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
+			ext = OrderedDict()
 			if obj_type == "cddScoreData":
-				start = int(obj_data[0])
-				end = int(obj_data[1])
-				definition = str(obj_data[2]).replace('\n','')
-				name = str(obj_data[3]).replace('\n','')
-				e_value = float(obj_data[5])
-				ext = GenBankCDD(start, end, name, definition, e_value, 'protein')
+				ext['start'] = int(obj_data[0])
+				ext['end'] = int(obj_data[1])
+				ext['definition'] = str(obj_data[2]).replace('\n','')
+				ext['name'] = str(obj_data[3]).replace('\n','')
+				ext['e_value'] = float(obj_data[5])
+				ext['type'] = 'GenBankCDD'
 				self.regions.append(ext)
 			else:
 				raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
 
 	def __repr__(self):
-		rep = "Annotation(Starts:%(start)s, Ends:%(end)s, Name:%(name)s, Regions:%(regions)s)" % self.__dict__
+		rep = "(starts:%(start)s, ends:%(end)s, name:%(name)s, regions:%(regions)s)" % self.__dict__
 		return rep
 
 class UnknownAnnotationException(Exception):

@@ -2,8 +2,14 @@ import os
 import sys
 import argparse
 import subprocess
+
 from collections import defaultdict
+
+import vcf
+
 import locate_variant
+
+
 
 argparser = argparse.ArgumentParser(prog = "snp_annotation")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -21,11 +27,13 @@ def main():
 	annotation_mapper = locate_variant.EntrezAnnotationMapper(args.vcf_file, opts)
 	annotation_mapper.annotate_all_snps()
 
-	annotation_mapper.write_annotated_vcf()
+	anno_vcf = annotation_mapper.write_annotated_vcf()
 
 	if args.test:
 		import IPython
 		IPython.embed()
+
+	return anno_vcf
 
 if __name__ == '__main__':
 	main()
