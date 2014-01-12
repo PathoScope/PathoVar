@@ -1,0 +1,6 @@
+{
+    "comprehensive_antibiotic_resistance_database": {
+        "path": "databases/comprehensive_antibiotic_resistance_database/",
+        "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
+    }
+}
