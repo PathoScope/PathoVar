@@ -6,7 +6,7 @@
 import json
 import re
 from time import sleep
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
 ## Third Party Library Imports
 import vcf 
@@ -213,7 +213,7 @@ class GenBankFeatureFile(object):
 		return contains
 
 	def __repr__(self):
-		rep = "(" + self.mol_type + "|" + ', '.join(map(repr, self.entries)) + ")"
+		rep = "GenBankFile(" + self.mol_type + "|" + ', '.join(map(repr, self.entries)) + ")"
 		return rep
 
 ## GenBankFeature
@@ -240,7 +240,7 @@ class GenBankFeature(object):
 		self.title = None
 
 	def __repr__(self):
-		rep = "(gi:%(gid)s, %(start)r, %(end)r, %(title)s)" % self.__dict__
+		rep = "GenBankFeature(gi|%(gid)s, %(start)r, %(end)r, %(title)s)" % self.__dict__
 		return rep
 
 ## GenBankSeqEntry
@@ -282,28 +282,22 @@ class GenBankSeqEntry(object):
 		self.nucleotide_sequence = self.nucleotide_sequence[self.start:self.end]
 
 	def __repr__(self):
-		rep = "(gi:%(gid)s, Title:%(title)s, ACC:%(accession)s, ANNO:%(annotations)s)" % self.__dict__
+		rep = "GenBankSeqEntry(gi=%(gid)s, Title=%(title)s, ACC=%(accession)s, ANNO=%(annotations)s)" % self.__dict__
 		return rep
 
-	def to_json(self):
-		ref_dict = OrderedDict()
-		ref_dict["gid"] = self.gid
-		ref_dict["accession"] = self.accession
-		ref_dict["starts"] = self.starts
-		ref_dict["ends"] = self.ends
-		ref_dict["title"] = self.title
-		ref_dict["annotations"] = {k:v.__dict__ for k,v in self.annotations.items()}
-		return json.dumps(ref_dict)
-
 	def to_info_field(self):
-		rep = "(%(gid)s|%(title)s|%(accession)s)" % self.__dict__
+		rep = "(gi_%(gid)s|title_%(title)s|acc_%(accession)s" % self.__dict__
+		annos = map(lambda x: x.to_info_field(), self.annotations.values())
+		if annos:
+			rep += '||' + '|'.join(annos)
+		rep += ')'
 		rep = re.sub(r'[^a-zA-Z0-9_\(\)\|]', '_', rep)
 		return rep
 
 class GenBankAnnotation(object):
 	def __init__(self, element):
-		self.start = map(lambda x: int(x.get_text()), element.find_all("seq-interval_from"))
-		self.end = map(lambda x: int(x.get_text()), element.find_all("seq-interval_to"))
+		self.start = map(lambda x: int(x.get_text().strip(' ')), element.find_all("seq-interval_from"))
+		self.end = map(lambda x: int(x.get_text().strip(' ')), element.find_all("seq-interval_to"))
 		
 		self.regions = [] #list(map(lambda x: x.get_text(), element.find_all("seqfeatdata_region")))
 		self.name = ', '.join(map(lambda x: x.get_text(), element.find_all("prot-ref_name_e")))
@@ -324,8 +318,25 @@ class GenBankAnnotation(object):
 				raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
 
 	def __repr__(self):
-		rep = "(starts:%(start)s, ends:%(end)s, name:%(name)s, regions:%(regions)s)" % self.__dict__
+		rep = "GenBankAnnotation(Starts=%(start)s, Ends=%(end)s, name:%(name)s, regions:%(regions)s)" % self.__dict__
 		return rep
+
+	def to_info_field(self):
+		rep = '(starts%(start)s|ends%(end)s|' % self.__dict__
+		for region in self.regions:
+			rep += "region(name_%(name)s|definition_%(definition)s" % region
+			if re.search(r'resistance', region['definition']):
+				rep += '|RESISTANCE'
+			rep += ')'
+		rep += ')'
+		return rep
+
+
+
+
+
+
+
 
 class UnknownAnnotationException(Exception):
 	pass

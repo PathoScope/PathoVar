@@ -177,17 +177,6 @@ def top_five_species_in_sam_file(file_path):
     result = [defline_parser(spec[0]) for spec in top_five_species]
     return result
 
-def defline_mangler(line, match):
-    raise NotImplementedError()
-
-##
-#
-def report_snps_to_console(file_path):
-    handle = open(file_path, 'r')
-    reader = vcf.VCFReader(handle)
-    for variant in reader:
-        print(variant)
-
 ## filter_vcf
 # Based on vcf_filter.py from PyVCF. Compatible with instantiated
 # PyVCF _Filter objects.
@@ -285,15 +274,22 @@ class Namespace:
     def __repr__(self):
         return str(self.__dict__)
 
-
 ## 
 # Parse a Fasta format file and provide basic filtering
 # utilities to keep sequences that meet a certain criteria
 class FastaParser(object):
-    def __init__(self, file_path, **opts):
+    def __init__(self, file_path, defline_parse_func = defline_parser, **opts):
         self.file_path = file_path
+        self.defline_parse_func = defline_parse_func
+        self.opts = opts
         self.outfile_path = opts.get("out", file_path + '.filtered')
         self.sequences = []
+        self.parsed = False
+
+    def __iter__(self):
+        if not self.parsed: self.parse_file()
+        for sequence in self.sequences:
+            yield sequence
 
     ## parse_file
     # Extracts all sequences from the fasta file. on disk, 
@@ -302,7 +298,7 @@ class FastaParser(object):
         defline = ''
         sequence = ''
         for line in open(self.file_path, 'r'):
-            match = re.search(r'^>(?P<defline>.+)\n', line)
+            match = re.search(r'^>(?P<defline>.+\n)', line)
             if match:
                 if defline != '':
                     self.process_record(defline, sequence)
@@ -311,6 +307,8 @@ class FastaParser(object):
             else:
                 sequence += line
         self.process_record(defline, sequence)
+
+        self.parsed = True
 
 
     ## process_record
@@ -351,7 +349,7 @@ class FastaParser(object):
     def filter_by_defline(self, defline_regex):
         keepers = [record for record in self.sequences if re.search(defline_regex, record.defline)]
         self.sequences = keepers
-
+        self.outfile_path += '.defline_' + re.sub(r'[/\\:*?"<>|{}]', '_', defline_regex)
 
     ## 
     # Writes the remaining sequences to file in Fasta Format
@@ -362,24 +360,75 @@ class FastaParser(object):
         outfile.close()
         return outfile.name
 
+class FastQParser(FastaParser):
+    def __init__(self, file_path, **opts):
+        super(FastaParser, self).__init__(self, file_path, **opts)
+
+    def process_record(self, defline, sequence, qual):
+        record = SequenceRecord(defline, sequence)
+        record.attributes['quality'] = qual
+        self.sequences.append(record)
+
+    def parse_file(self):
+        defline = ''
+        sequence = ''
+        qual = ''
+        state = 'sequence'
+        for line in open(self.file_path, 'r'):
+            match = re.search(r'^@(?P<defline>[^@]+\n)', line)
+            if match:
+                if defline != '':
+                    self.process_record(defline, sequence, qual)
+                defline = match.groupdict()['defline']
+                sequence = ''
+                qual = ''
+                state = 'sequence'
+
+            elif re.search(r'\+\n', line):
+                state = 'qual'
+            else:
+                if state == 'sequence':
+                    sequence += line
+                else: 
+                    qual += line
+        self.process_record(defline, sequence, qual)
+        self.parsed = True
+
+    def write_output(self):
+        outfile = open(self.outfile_path + '.fq', 'w')
+        for record in self.sequences:
+            outfile.write(record.to_fastq_format())
+        outfile.close()
+        return outfile.name
+
 class SequenceRecord(object):
-    def __init__(self, defline, sequence):
+    def __init__(self, defline, sequence, defline_parser_func):
         self.defline = defline
-        defline_fields = defline_parser(defline)
+        defline_fields = defline_parser_func(defline)
         self.org_name = defline_fields.get('org_name','-')
         self.tax_id = defline_fields.get('tax_id','-')
         self.gene_id = defline_fields.get('gene_id', '-')
 
         self.sequence = sequence
-        self.attributs = dict()
+        self.attributes = dict()
 
     def to_fasta_format(self):
-        entry = ">" + self.defline + '\n'
-        entry += self.sequence + '\n'
+        entry = ">" + self.defline
+        entry += self.sequence
+        return entry
+
+    def to_fastq_format(self):
+        entry = "@" + self.defline
+        entry += self.sequence
+        entry += '+\n'
+        qual = self.attributes.get('quality', None)
+        if qual == None:
+            qual = "!" * len(self.sequence)
+        entry += qual
         return entry
 
     def __repr__(self):
-        return "<" + self.defline + ">"
+        return "SequenceRecord(" + self.defline + ")"
 
 
 

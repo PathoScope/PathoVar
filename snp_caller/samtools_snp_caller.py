@@ -109,17 +109,18 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
         if 'max_read_depth' not in opts: opts['max_read_depth'] = 100
         for bam_file in indexed_bam_files:
             opts['bam_file'] = bam_file
-            opts['final_vcf'] = bam_file + '.vcf'
+            opts['final_vcf'] = bam_file[:-11] + '.vcf'
             opts['intermediary'] = bam_file + '.raw.bcf'
             opts['mpileup-m'] = 3
             opts['mpileup-F'] = 0.0002
+            opts['consensus-fq'] = ".cns.fq"
             result = os.system('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -bvcg - > {intermediary}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during samtools mpileup | bcftools view for %s" % opts['bam_params'])
             result = os.system('{bin_dir}bcftools view {intermediary} | {bin_dir}vcfutils.pl varFilter -D{max_read_depth} > {final_vcf}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during bcftools view | vcfutils.pl varFilter for %s" % bam_file)
-            result = os.system('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}.cns.fq'.format(**opts))
+            result = os.system('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}{consensus-fq}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during vcfutils.pl vcf2fq %s" % bam_file)
             vcf_files.append(opts["final_vcf"])
