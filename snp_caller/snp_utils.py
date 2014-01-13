@@ -264,6 +264,30 @@ class FilterAltSubstX(VCFFilterBase):
     def __repr__(self):
         return self.filter_name()
 
+class FilterByAltCallDepth(VCFFilterBase):
+    '''Filter a VCF File by limiting variants to only those with at least X% Alt calls'''
+    
+    name = 'alt-call-depth'
+    
+    @classmethod
+    def customize_parser(self, parser):
+        parser.add_argument('--percent-alt', type=float, default=0.4, 
+            help="The minimum percentage of all calls for a locus that must be an alternative allele")
+    
+    def __init__(self, args):
+        self.percent_alt = args.percent_alt
+
+    def filter_name(self):
+        return "%s-%f" % (self.name, self.percent_alt)
+
+    def __call__(self, record):
+        total_reads = sum(record.INFO["DP4"])
+        ref_reads = sum(record.INFO["DP4"][:2])
+        alt_reads = sum(record.INFO["DP4"][2:])
+
+        if alt_reads / total_reads >= self.percent_alt:
+            return record
+
 ## Namespace
 # For compatibility with classes expecting 
 # input from argparse

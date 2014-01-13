@@ -6,6 +6,20 @@
             "http://arpcard.mcmaster.ca/blast/db/nucleotide/ABS-genes.fa.gz", 
             "http://arpcard.mcmaster.ca/obo-download/aro.obo" ],
         "storage_path": "databases/comprehensive_antibiotic_resistance_database/",
-        "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py"
+        "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
+        "appropriate_organisms": [
+            "bacteria",
+            "virus"
+        ]
+    },
+    "patric": {
+        "data_urls": [
+            "ftp://ftp.patricbrc.org/patric2/genomes/"
+        ],
+        "storage_path": "databases/patric/",
+        "setup_script": null,
+        "appropriate_organisms": [
+            "bacteria"
+        ]
     }
 }

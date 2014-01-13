@@ -4,7 +4,6 @@ from collections import defaultdict
 import argparse
 
 import snp_caller
-from snp_caller import snp_utils
 
 argparser = argparse.ArgumentParser(prog="pathovar")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -26,6 +25,7 @@ snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
 snp_anno_args.add_argument('-a', '--annotation-engine', action='store', default = '', choices = ['entrez', 'snpeff', ''], help = "Select the program to annotate variants with")
 
 def main(args):
+	from snp_caller import snp_utils
 	opts = {}
 	opts['verbose'] = args.verbose
 	opts['clean'] = args.clean

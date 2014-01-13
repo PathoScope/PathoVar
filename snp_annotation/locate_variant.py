@@ -3,7 +3,6 @@
 # and annotated regions of genes.
 
 ## Standard Library Imports
-import json
 import re
 from time import sleep
 from collections import OrderedDict, namedtuple
