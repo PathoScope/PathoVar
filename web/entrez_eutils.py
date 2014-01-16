@@ -12,6 +12,7 @@
 import sys
 import re
 import os
+from time import time, sleep
 from collections import namedtuple
 
 # External Dependencies
@@ -47,14 +48,14 @@ get_gene_by_gene_id = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?
 # and performing multi-request actions.
 #
 class EntrezEUtilsDriver(object):
-    def __init__(self, opts):
+    def __init__(self, **opts):
         self.opts = opts
-        self.verbose = self.opts['verbose']
+        self.verbose = self.opts.get('verbose', False)
 
     def find_genome_by_org_name(self, org_name, form = 'fasta', mode = 'text'):
         # Find the genome id
         if self.verbose: print("Fetching Genome ID from Entrez")
-        genome_db_response = requests.get(genome_by_org_name.format(**dict(org_name = org_name)))
+        genome_db_response = get_robust(genome_by_org_name.format(**dict(org_name = org_name)))
         genome_db_response.raise_for_status()
         
         # Parse the response
@@ -72,7 +73,7 @@ class EntrezEUtilsDriver(object):
 
         # Set up remote environment to cross-link from genome id to nuccore id
         if self.verbose: print("Fetching Link to Genome from Entrez")
-        genome_to_nuccore_response = requests.get(link_from_genome_to_nuccore.format(**dict(id = genome_id)))
+        genome_to_nuccore_response = get_robust(link_from_genome_to_nuccore.format(**dict(id = genome_id)))
         genome_to_nuccore_response.raise_for_status()
 
         if self.verbose: print("Response recieved...")
@@ -86,7 +87,7 @@ class EntrezEUtilsDriver(object):
             if(self.verbose): print(genome_to_nuccore_response_xml)
             raise EntrezEUtilsDriverException("Query Key and/or Web Env Missing")
         if self.verbose: print("Fetching Genome fasta file from Entrez")
-        get_nucleotide_sequences_response = requests.get(get_nucleotides_from_link \
+        get_nucleotide_sequences_response = get_robust(get_nucleotides_from_link \
             .format(**dict(query_key = query_key, web_env = web_env, form = form, mode = mode)))
         get_nucleotide_sequences_response.raise_for_status()
         # The nucleotide sequence should be located in get_genome_response.text
@@ -96,8 +97,10 @@ class EntrezEUtilsDriver(object):
     def find_nucleotides_by_gene_id(self, gene_id, form = 'fasta', mode = 'text'):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
-        if self.verbose: print("Fetching data from Entrez")
-        get_nucleotide_sequences_response = requests.get(get_nucleotides_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode=mode)))
+        timer = time()
+        if self.verbose: print("Fetching %s from Entrez" % gene_id)
+        get_nucleotide_sequences_response = get_robust(get_nucleotides_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode=mode)))
+        if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
         get_nucleotide_sequences_response.raise_for_status()
         # The genome sequence should be located in get_genome_response.text
         return get_nucleotide_sequences_response.text
@@ -105,20 +108,40 @@ class EntrezEUtilsDriver(object):
     def find_protein_by_gene_id(self, gene_id, form = 'fasta', mode = 'text'):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
-        if self.verbose: print("Fetching data from Entrez")
-        get_protein_sequences_response = requests.get(get_protein_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode = mode)))
+        timer = time()
+        if self.verbose: print("Fetching %s from Entrez" % gene_id)
+        get_protein_sequences_response = get_robust(get_protein_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode = mode)))
+        if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
         get_protein_sequences_response.raise_for_status()
         return get_protein_sequences_response.text
         
     def find_gene_by_gene_id(self, gene_id, form = 'xml'):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
-        if self.verbose: print("Fetching data from Entrez")
-        get_gene_response = requests.get(get_gene_by_gene_id.format(**dict(gene_id=gene_id, form=form)))
+        timer = time()
+        if self.verbose: print("Fetching %s from Entrez" % gene_id)
+        get_gene_response = get_robust(get_gene_by_gene_id.format(**dict(gene_id=gene_id, form=form)))
+        if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
         get_gene_response.raise_for_status()
         if self.verbose:
             open(gene_id+".gene." + form, 'w').write(get_gene_response.text)
         return get_gene_response.text
+
+
+def get_robust(url, count = 0, **kwargs):
+    response = requests.get(url, **kwargs)
+    try:
+        response.raise_for_status()
+    except Exception, e:        
+        if count < 5:
+            print("Error occured during HTTP Request, retry %d" % count)
+            sleep(10)
+            return get_robust(url, count + 1, **kwargs)
+        else:
+            raise EntrezEUtilsDriverException(e.text)
+    return response
+
+
 
 ## EntrezEUtilsDriverException
 # Parent class for capturing all EUtils generated exceptions. Exception class 

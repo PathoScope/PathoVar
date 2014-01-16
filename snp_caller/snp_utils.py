@@ -180,8 +180,8 @@ def top_five_species_in_sam_file(file_path):
 ## filter_vcf
 # Based on vcf_filter.py from PyVCF. Compatible with instantiated
 # PyVCF _Filter objects.
-# @param drop If True, keep sequences that pass a filter, else exclude sequences that pass the filter
-def filter_vcf(file_path, filters, drop = True, short_circuit = False):
+# @param keep If True, keep sequences that pass a filter, else exclude sequences that pass the filter
+def filter_vcf(file_path, filters, keep = True, short_circuit = False):
     inp = vcf.Reader(open(file_path, 'r'))
 
     # build filter chain
@@ -208,12 +208,41 @@ def filter_vcf(file_path, filters, drop = True, short_circuit = False):
             record.add_filter(filt.filter_name())
 
         output_record = all(output_record) and len(output_record) > 0
-        if not drop:
+        if not keep:
             output_record = not output_record
         if output_record:
             # use PASS only if other filter names appear in the FILTER column
-            if record.FILTER is None and not drop: record.FILTER = 'PASS'
+            if record.FILTER is None and not keep: record.FILTER = 'PASS'
             output.write_record(record)
+
+def filter_vcf_in_memory(variant_reader, filters, keep=True, short_circuit = False):
+    # build filter chain
+    chain = []
+    for filter_obj in filters:
+        chain.append(filter_obj)
+        short_doc = filter_obj.__doc__ or ''
+        short_doc = short_doc.split('\n')[0].lstrip()
+        # add a filter record to the output
+        variant_reader.filters[filter_obj.filter_name()] = _Filter(filter_obj.filter_name(), short_doc)
+
+    keepers = []
+    # apply filters
+    for record in variant_reader:
+        output_record = []
+        for filt in chain:
+            result = filt(record)
+            
+            output_record.append(bool(result))
+            record.add_filter(filt.filter_name())
+
+        output_record = all(output_record) and len(output_record) > 0
+        if not keep:
+            output_record = not output_record
+        if output_record:
+            keepers.append(record)
+
+    return keepers
+
 
 class FilterByChromMatch(VCFFilterBase):
     '''Filter a VCF File by regular expresion match over its CHROM column'''
@@ -271,22 +300,42 @@ class FilterByAltCallDepth(VCFFilterBase):
     
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('--percent-alt', type=float, default=0.4, 
+        parser.add_argument('--alt-depth', type=float, default=0.4, 
             help="The minimum percentage of all calls for a locus that must be an alternative allele")
     
     def __init__(self, args):
-        self.percent_alt = args.percent_alt
+        self.alt_depth = args.alt_depth
 
     def filter_name(self):
-        return "%s-%f" % (self.name, self.percent_alt)
+        return "%s-%.2f" % (self.name, self.alt_depth)
 
     def __call__(self, record):
         total_reads = sum(record.INFO["DP4"])
         ref_reads = sum(record.INFO["DP4"][:2])
         alt_reads = sum(record.INFO["DP4"][2:])
 
-        if alt_reads / total_reads >= self.percent_alt:
+        if alt_reads / float(total_reads) >= self.alt_depth:
             return record
+
+class FilterByReadDepth(VCFFilterBase):
+
+    name = 'call-depth'
+    @classmethod
+    def customize_parser(self, parser):
+        parser.add_argument('--min-depth', type=int, default=5, 
+            help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
+
+
+    def __init__(self, args):
+        self.min_depth = args.min_depth
+
+    def filter_name(self):
+        return "%s-%d" % (self.name, self.min_depth)
+
+    def __call__(self, record):
+        if record.INFO['DP'] >= self.min_depth:
+            return record
+            
 
 ## Namespace
 # For compatibility with classes expecting 

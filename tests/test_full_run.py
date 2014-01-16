@@ -43,6 +43,6 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         
     def test_step_2_annotate_snps(self):
         print("\nAnnotating SNPs")
-
+        print("STUB")
 if __name__ == '__main__':
     unittest.main()

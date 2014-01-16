@@ -4,7 +4,9 @@
 
 ## Standard Library Imports
 import re
-from time import sleep
+import os
+from time import sleep, time
+from copy import copy
 from collections import OrderedDict, namedtuple
 
 ## Third Party Library Imports
@@ -16,6 +18,13 @@ from bs4 import BeautifulSoup
 from pathovar.web import entrez_eutils
 from pathovar.snp_caller import snp_utils
 
+QUAL_FILTERS = [snp_utils.FilterByAltCallDepth, snp_utils.FilterByReadDepth]
+
+def init_quality_filters(filter_args):
+	filters = [filt(filter_args) for filt in QUAL_FILTERS]
+	return filters
+
+UNKNOWN_ANNOTATION_STORE = dict()
 
 ##
 #
@@ -23,13 +32,13 @@ class EntrezAnnotationMapper(object):
 
 	##
 	#
-	def __init__(self, vcf_file, opts):
+	def __init__(self, vcf_file, **opts):
 		self.vcf_file = vcf_file
 		self.opts = opts
-		self.verbose = opts["verbose"]
-		self.entrez_handle = entrez_eutils.EntrezEUtilsDriver(self.opts)
+		self.verbose = opts.get("verbose", False)
+		self.entrez_handle = entrez_eutils.EntrezEUtilsDriver(**opts)
 		self.reader = vcf.VCFReader(open(vcf_file, 'r'))
-		self.variants = [var for var in self.reader]
+		self.variants = snp_utils.filter_vcf_in_memory(self.reader, init_quality_filters(self.opts['filter_args']), keep = True)
 		self.annotated_variants = []
 		self.annotation_cache = dict()
 
@@ -68,7 +77,7 @@ class EntrezAnnotationMapper(object):
 		# Just in case it was passed as an int
 		gene_id = str(gene_id)
 		result = self.entrez_handle.find_nucleotides_by_gene_id(gene_id, form = 'genbank', mode = 'xml')
-		if self.verbose:
+		if self.verbose and not os.path.exists(gene_id + '.genbank.' + 'xml'):
 			open(gene_id + '.genbank.' + 'xml', 'w').write(result)
 		return GenBankFeatureFile(result, opts)
 	##
@@ -77,7 +86,7 @@ class EntrezAnnotationMapper(object):
 		# Just in case it was passed as an int
 		gene_id = str(gene_id)
 		result = self.entrez_handle.find_protein_by_gene_id(gene_id, form = 'genbank', mode = 'xml')
-		if self.verbose:
+		if self.verbose and not os.path.exists(gene_id + '.peptide_record.' + 'xml'):
 			open(gene_id + '.peptide_record.' + 'xml', 'w').write(result)
 		return GenBankFeatureFile( result, opts)
 
@@ -88,7 +97,8 @@ class EntrezAnnotationMapper(object):
 			annotations = self.annotate_snp(variant)
 			anno_variant = AnnotatedVariant(variant, annotations)
 			if self.verbose:
-				print(anno_variant)
+				#print(str(variant) + " found in " + str(anno_variant.annotations))
+				pass
 			self.annotated_variants.append(anno_variant)
 
 
@@ -164,15 +174,21 @@ class AnnotatedVariant(vcf.model._Record):
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
 	def __init__(self, xml, opts):
-		self.parser = BeautifulSoup(xml)
 		self.opts = opts
 		self.verbose = opts['verbose']
 		self.mol_type = opts['mol_type']
+		timer = time()
+		self.parser = BeautifulSoup(xml)
+		if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
+		if self.verbose: print("Searching for Chromosome")
 		self.chromosome = self.parser.find('iupacna')
 		if self.chromosome:
-			self.chromosome = self.chromosome.get_text()
+			self.chromosome = self.chromosome.get_text().strip()
+			if self.verbose: print("Found")
+
+		if self.verbose: print("Gathering Entries and Features")
 		self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self), self.parser.find_all("seq-entry")) }
-		self.features = map(GenBankFeature, self.parser.find_all("seq-feat"))
+		self.features = map(lambda x: GenBankFeature(x, self), self.parser.find_all("seq-feat"))
 		
 		# Features are subsets of Entries. It would be a good idea to compress them to a single entity
 		# later. Entries capture finer resolution details about a particular gene
@@ -185,13 +201,15 @@ class GenBankFeatureFile(object):
 		
 		# Each feature occurs multiple times in the file, redundant with its multiple regions. The complete
 		# genomic span is the largest span. This works for single-span entities. 
+		if self.verbose: print("Computing Genomic Coordinates")
 		feature_dict = {}
 		for feat in self.features:
-			if feat.gid not in feature_dict:
-				feature_dict[feat.gid] = feat
-			else:
-				if feat.end - feat.start > feature_dict[feat.gid].end - feature_dict[feat.gid].start:
+			if feat.starts:
+				if feat.gid not in feature_dict:
 					feature_dict[feat.gid] = feat
+				else:
+					if feat.end - feat.start > feature_dict[feat.gid].end - feature_dict[feat.gid].start:
+						feature_dict[feat.gid] = feat
 		self.features = feature_dict.values()
 		
 		# Using the genomic position data just computed, update coordinate information for the 
@@ -219,17 +237,24 @@ class GenBankFeatureFile(object):
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the substructure of a GenBank flat file related to a single sequence feature
 class GenBankFeature(object):
-	def __init__(self, element):
+	def __init__(self, element, owner):
 		self.element = element
-		self.gid = element.find('seq-id_gi').get_text()
+		self.gid = element.find('seq-id_gi').get_text().strip()
 		# Some features, especially in complex organisms, will have multi-part features. 
 		# Capture all of that data
-		self.starts = map(lambda x: int(x.get_text()), self.element.find_all('seq-interval_from'))
-		self.ends = map(lambda x: int(x.get_text()), self.element.find_all('seq-interval_to'))
+		self.starts = map(lambda x: int(x.get_text().strip()), self.element.find_all('seq-interval_from'))
+		self.ends = map(lambda x: int(x.get_text().strip()), self.element.find_all('seq-interval_to'))
 
 		# and set the extrema to the global start and stop
-		self.start = min(self.starts)
-		self.end = max(self.ends)
+		self.start = None
+		self.end   = None
+
+		if(self.starts):
+			self.start = min(self.starts)
+			self.end = max(self.ends)
+		else:
+			#print("No Coordinates for %s" % self.gid)
+			pass
 
 		# Likely to be empty
 		self.dbxref = element.find_all('dbtag_db')
@@ -250,8 +275,8 @@ class GenBankSeqEntry(object):
 		self.element = element
 		self.owner = owner
 
-		self.gid = element.find('seq-id_gi').get_text()
-		self.accession = element.find('textseq-id_accession').get_text()
+		self.gid = element.find('seq-id_gi').get_text().strip()
+		self.accession = element.find('textseq-id_accession').get_text().strip()
 		
 		# The coordinates in the seq-entry itself are relative to their own start and stop points. 
 		# The genomic coordinates must be inferred from the genomic seq-feat tags
@@ -264,8 +289,9 @@ class GenBankSeqEntry(object):
 		# Prune later once starts and ends are set
 		self.nucleotide_sequence = owner.chromosome
 
-		self.title = element.find('seqdesc_title').get_text()
+		self.title = element.find('seqdesc_title').get_text().strip()
 		self.annotations = {ann.name: ann for ann in map(GenBankAnnotation, element.find_all("bioseq_annot"))}
+		self.comments = map(lambda x: x.get_text().strip(), element.find_all('seq-feat_comment'))
 		
 		self._id = element.find_all('bioseq_id')
 		self._desc = element.find_all("bioseq_descr")
@@ -277,55 +303,110 @@ class GenBankSeqEntry(object):
 		self.ends   = feature.ends  
 		self.start  = feature.start 
 		self.end	= feature.end   
-
-		self.nucleotide_sequence = self.nucleotide_sequence[self.start:self.end]
+		if self.nucleotide_sequence:
+			self.nucleotide_sequence = self.nucleotide_sequence[self.start:self.end]
 
 	def __repr__(self):
-		rep = "GenBankSeqEntry(gi=%(gid)s, Title=%(title)s, ACC=%(accession)s, ANNO=%(annotations)s)" % self.__dict__
-		return rep
+		rep = "GenBankSeqEntry(gi=%(gid)s, Title=%(title)s, ACC=%(accession)s" 
+		#if self.owner.verbose:
+			#rep += ", ANNO=%(annotations)s"
+		rep += ')'
+		return rep % self.__dict__
 
 	def to_info_field(self):
-		rep = "(gi_%(gid)s|title_%(title)s|acc_%(accession)s" % self.__dict__
+		rep = "(gi:%(gid)s|title:%(title)s|acc:%(accession)s" % self.__dict__
 		annos = map(lambda x: x.to_info_field(), self.annotations.values())
-		if annos:
-			rep += '||' + '|'.join(annos)
+		rep += '||' + '|'.join(annos)
+		rep += '||' + '|'.join(self.comments)
+		if re.search(r'resistance', rep):
+			rep += '|RESISTANCE'
 		rep += ')'
-		rep = re.sub(r'[^a-zA-Z0-9_\(\)\|]', '_', rep)
+		rep = re.sub(r'\s', '_', rep)
 		return rep
+
+class AnnotationExtension(OrderedDict):
+	def __init__(self,*args, **kwargs):
+		OrderedDict.__init__(self, *args, **kwargs)
+
+	def __repr__(self):
+		rep = ''
+		ext_type = self.get("ext_type", 'anno_ext')
+		rep += ext_type + '('
+		vals = []
+		for key in self:
+			if key == "ext_type": continue
+			vals.append(key + ': ' + str(self[key]))
+		rep += ', '.join(vals) + ')'
+		return rep
+
+	def __str__(self):
+		return repr(self)
+
 
 class GenBankAnnotation(object):
 	def __init__(self, element):
-		self.start = map(lambda x: int(x.get_text().strip(' ')), element.find_all("seq-interval_from"))
-		self.end = map(lambda x: int(x.get_text().strip(' ')), element.find_all("seq-interval_to"))
+		self.start = map(lambda x: int(x.get_text().replace(' ','')), element.find_all("seq-interval_from"))
+		self.end = map(lambda x: int(x.get_text().replace(' ','')), element.find_all("seq-interval_to"))
 		
-		self.regions = [] #list(map(lambda x: x.get_text(), element.find_all("seqfeatdata_region")))
-		self.name = ', '.join(map(lambda x: x.get_text(), element.find_all("prot-ref_name_e")))
+		self.regions = [] #list(map(lambda x: x.get_text().strip(), element.find_all("seqfeatdata_region")))
+		self.name = ', '.join(map(lambda x: x.get_text().strip(), element.find_all("prot-ref_name_e")))
 		raw_extensions = element.find_all("seq-feat_ext")
 		for raw_ext in raw_extensions:
-			obj_type = str(raw_ext.find("object-id_str").get_text())
-			obj_data = map(lambda x: x.get_text(), raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
-			ext = OrderedDict()
+			obj_type = str(raw_ext.find("object-id_str").get_text().strip())
+			obj_data = map(lambda x: x.get_text().strip(), raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
+			ext = AnnotationExtension()
 			if obj_type == "cddScoreData":
-				ext['start'] = int(obj_data[0])
-				ext['end'] = int(obj_data[1])
-				ext['definition'] = str(obj_data[2]).replace('\n','')
-				ext['name'] = str(obj_data[3]).replace('\n','')
+				ext['from'] = int(obj_data[0])
+				ext['to'] = int(obj_data[1])
+				ext['definition'] = str(obj_data[2]).strip()
+				ext['name'] = str(obj_data[3]).strip()
 				ext['e_value'] = float(obj_data[5])
-				ext['type'] = 'GenBankCDD'
+				ext['ext_type'] = 'cddScoreData'
 				self.regions.append(ext)
 			else:
-				raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
+				#print("Unknown Extension: %s" % obj_type)
+				#raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
+				UNKNOWN_ANNOTATION_STORE[obj_type] = raw_ext
+				ext = self.process_extension(raw_ext)
+				ext['ext_type'] = obj_type
+				self.regions.append(ext)
+				pass
 
 	def __repr__(self):
 		rep = "GenBankAnnotation(Starts=%(start)s, Ends=%(end)s, name:%(name)s, regions:%(regions)s)" % self.__dict__
 		return rep
 
+	def process_extension(self, raw_ext):
+		labels = map(lambda x: x.get_text().strip(), raw_ext.find_all("user-field_label"))
+		data = raw_ext.find_all("user-field_data")
+		values = []
+		for datum in data:
+			text = datum.get_text().strip()
+			if len(text) == 0:
+				text = str(datum.attrs)
+			values.append(text)
+		ext = AnnotationExtension()
+		for i in xrange(len(labels)):
+			ext[labels[i]] = values[i]
+
+		return ext
+
 	def to_info_field(self):
-		rep = '(starts%(start)s|ends%(end)s|' % self.__dict__
+		rep = '(starts:%(start)s|ends:%(end)s|' % self.__dict__
 		for region in self.regions:
-			rep += "region(name_%(name)s|definition_%(definition)s" % region
-			if re.search(r'resistance', region['definition']):
-				rep += '|RESISTANCE'
+			buff = []
+			region = copy(region)
+			ext_type = region.pop('ext_type')
+			pos_from = region.pop('from', None)
+			pos_to   = region.pop('to', None)
+			for key, value in region.items():
+				buff.append(key + ":" + str(value))
+			# prepend indices
+			if pos_from:
+				buff = ['from:' + str(pos_from).strip(), 'to:' + str(pos_to).strip()] + buff
+			buff = '|'.join(buff)
+			buff = ext_type + '(' + buff
+			rep += buff
 			rep += ')'
 		rep += ')'
 		return rep
