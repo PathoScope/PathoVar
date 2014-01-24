@@ -4,7 +4,7 @@ import glob
 
 import pathovar
 from pathovar.snp_annotation import database_annotator_base
-from pathovar.snp_caller.snp_utils import FastaParser
+from pathovar.utils.fasta_utils import FastaParser
 
 database_data = pathovar.get_external_databases_config()['comprehensive_antibiotic_resistance_database']
 

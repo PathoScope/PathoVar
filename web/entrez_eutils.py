@@ -19,8 +19,9 @@ from collections import namedtuple
 import requests
 from bs4 import BeautifulSoup
 
-## URL CONSTANTS
+from pathovar.web import get_robust
 
+## URL CONSTANTS
 taxonomy_summary_url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=taxonomy&id={tid}'
 taxonomy_detail_url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=taxonomy&id={tid}'
 # Organism name to Taxonomy ID: 
@@ -134,7 +135,7 @@ def get_robust(url, count = 0, **kwargs):
         response.raise_for_status()
     except Exception, e:        
         if count < 5:
-            print("Error occured during HTTP Request, retry %d" % count)
+            print("Error occured during HTTP Request (Error: %s), retry %d" % (e.text, count))
             sleep(10)
             return get_robust(url, count + 1, **kwargs)
         else:

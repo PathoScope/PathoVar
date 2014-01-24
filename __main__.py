@@ -5,6 +5,7 @@ from collections import defaultdict
 import argparse
 
 import snp_caller
+import utils
 
 argparser = argparse.ArgumentParser(prog="pathovar")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -31,7 +32,6 @@ snp_filt_args.add_argument('-d','--min-depth', type=int, default=5, help="The mi
 snp_filt_args.add_argument('--alt-depth', type=float, default=0.4, help="The minimum ratio of all calls for a locus that must be an alternative allele [default:0.4]")
 
 def main(args):
-	from snp_caller import snp_utils
 	opts = {}
 	opts['verbose'] = args.verbose
 	opts['clean'] = args.clean
@@ -53,7 +53,7 @@ def main(args):
 	snp_annotation_driver = None
 	anno_vcf = None
 
-	filter_args = snp_utils.Namespace()
+	filter_args = utils.Namespace()
 	filter_args.alt_depth = args.alt_depth
 	filter_args.min_depth = args.min_depth
 

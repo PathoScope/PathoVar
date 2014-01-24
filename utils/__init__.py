@@ -1,5 +1,7 @@
 __all__ = ['fasta_utils', 'vcf_utils', 'sam_utils']
 
+import re
+
 ## Namespace
 # For compatibility with classes expecting 
 # input from argparse

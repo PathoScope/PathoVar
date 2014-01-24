@@ -16,9 +16,11 @@ from bs4 import BeautifulSoup
 
 ## Internal Imports
 from pathovar.web import entrez_eutils
-from pathovar.snp_caller import snp_utils
 
-QUAL_FILTERS = [snp_utils.FilterByAltCallDepth, snp_utils.FilterByReadDepth]
+from pathovar import utils
+from pathovar.utils import vcf_utils
+
+QUAL_FILTERS = [vcf_utils.FilterByAltCallDepth, vcf_utils.FilterByReadDepth]
 
 def init_quality_filters(filter_args):
 	filters = [filt(filter_args) for filt in QUAL_FILTERS]
@@ -38,7 +40,7 @@ class EntrezAnnotationMapper(object):
 		self.verbose = opts.get("verbose", False)
 		self.entrez_handle = entrez_eutils.EntrezEUtilsDriver(**opts)
 		self.reader = vcf.VCFReader(open(vcf_file, 'r'))
-		self.variants = snp_utils.filter_vcf_in_memory(self.reader, init_quality_filters(self.opts['filter_args']), keep = True)
+		self.variants = vcf_utils.filter_vcf_in_memory(self.reader, init_quality_filters(self.opts['filter_args']), keep = True)
 		self.annotated_variants = []
 		self.annotation_cache = dict()
 
@@ -47,7 +49,7 @@ class EntrezAnnotationMapper(object):
 	##
 	#
 	def annotate_snp(self, variant):
-		ids = snp_utils.defline_parser(variant.CHROM)
+		ids = utils.defline_parser(variant.CHROM)
 		annotations = []
 		opt_args = dict(verbose=self.verbose)
 		if "gene_id" in ids:
@@ -316,10 +318,10 @@ class GenBankSeqEntry(object):
 	def to_info_field(self):
 		rep = "(gi:%(gid)s|title:%(title)s|acc:%(accession)s" % self.__dict__
 		annos = map(lambda x: x.to_info_field(), self.annotations.values())
-		rep += '||' + '|'.join(annos)
-		rep += '||' + '|'.join(self.comments)
+		rep += '||Annotations|' + '|'.join(annos)
+		rep += '||Comments|' + '|'.join(self.comments)
 		if re.search(r'resistance', rep):
-			rep += '|RESISTANCE'
+			rep += '||RESISTANCE'
 		rep += ')'
 		rep = re.sub(r'\s', '_', rep)
 		return rep

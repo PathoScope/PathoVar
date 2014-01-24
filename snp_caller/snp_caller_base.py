@@ -2,7 +2,7 @@ import sys
 import os
 import abc
 
-import snp_utils
+from pathovar.utils import fasta_utils
 
 class SNPCallerBase(object):
     '''Generic SNP Caller Interface class. This class does not 
@@ -37,7 +37,7 @@ to a third party SNP Calling program.
     @abc.abstractmethod
     def get_reference_genome(self,source, tax_ids_reg = None, org_names_reg = None, gene_ids_reg = None, **kwargs):
         if tax_ids_reg or org_names_reg or gene_ids_reg:
-            parser = snp_utils.FastaParser(source)
+            parser = fasta_utils.FastaParser(source)
             parser.parse_file()
             if tax_ids_reg:
                 parser.filter_by_tax_ids(tax_ids_reg)

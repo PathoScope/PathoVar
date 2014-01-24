@@ -26,7 +26,7 @@ class FastaParser(object):
         defline = ''
         sequence = ''
         for line in open(self.file_path, 'r'):
-            match = re.search(r'^>(?P<defline>.+\n)', line)
+            match = re.search(r'^>(?P<defline>.+)\n', line)
             if match:
                 if defline != '':
                     self.process_record(defline, sequence)
@@ -89,11 +89,12 @@ class FastaParser(object):
         return outfile.name
 
 class FastQParser(FastaParser):
-    def __init__(self, file_path, **opts):
-        super(FastaParser, self).__init__(self, file_path, **opts)
+    def __init__(self, file_path, defline_parse_func = defline_parser, **opts):
+        FastaParser.__init__(self, file_path, **opts)
+        self.newline_between = opts.get('newline_between', False)
 
     def process_record(self, defline, sequence, qual):
-        record = SequenceRecord(defline, sequence)
+        record = SequenceRecord(defline, sequence, self.defline_parse_func)
         record.attributes['quality'] = qual
         self.sequences.append(record)
 
@@ -101,24 +102,26 @@ class FastQParser(FastaParser):
         defline = ''
         sequence = ''
         qual = ''
-        state = 'sequence'
+        state = 'newline_between' if self.newline_between else 'sequence'
         for line in open(self.file_path, 'r'):
-            match = re.search(r'^@(?P<defline>[^@]+\n)', line)
-            if match:
+            match = re.search(r'^@(?P<defline>[^@]+)\n', line)
+            if ( match and state == 'newline_between' and self.newline_between) or (match and not self.newline_between):
                 if defline != '':
                     self.process_record(defline, sequence, qual)
                 defline = match.groupdict()['defline']
                 sequence = ''
                 qual = ''
                 state = 'sequence'
-
             elif re.search(r'\+\n', line):
                 state = 'qual'
+            elif line == '\n' and self.newline_between:
+                state = 'newline_between'
             else:
                 if state == 'sequence':
                     sequence += line
                 else: 
                     qual += line
+
         self.process_record(defline, sequence, qual)
         self.parsed = True
 
@@ -155,17 +158,17 @@ class SequenceRecord(object):
         return entry
 
     def find_uncovered_regions(self):
-    	undef_region = []
-    	last_start = None
-    	for ind, nucl in enumerate(self.sequence.lowercase()):
-    		if nucl == 'n':
-    			if last_start == None:
-    				last_start = ind
-			else:
-				if last_start is not None:
-					undef_region.append((last_start, ind))
-					last_start = None
-		return undef_region
+        undef_region = []
+        last_start = None
+        for ind, nucl in enumerate(self.sequence.lower()):
+            if nucl == 'n':
+                if last_start == None:
+                    last_start = ind
+            else:
+                if last_start is not None:
+                    undef_region.append((last_start, ind))
+                    last_start = None
+        return undef_region
 
 
 

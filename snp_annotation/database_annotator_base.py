@@ -2,11 +2,11 @@ import os
 import sys
 import subprocess
 
-from pathovar.snp_caller import snp_utils
+from pathovar.utils import fasta_utils
 
 EXT_TO_PARSER = {
-    '.fa'  : snp_utils.FastaParser,
-    '.fq'  : snp_utils.FastQParser,
+    '.fa'  : fasta_utils.FastaParser,
+    '.fq'  : fasta_utils.FastQParser,
     #'.vcf' = 
 }
 

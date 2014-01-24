@@ -1,5 +1,6 @@
 import re
-
+import os
+from collections import defaultdict
 # 3rd Party Imports
 import vcf
 from vcf.parser import _Filter
@@ -72,6 +73,43 @@ def filter_vcf_in_memory(variant_reader, filters, keep=True, short_circuit = Fal
     return keepers
 
 
+def vcf_to_gene_report(vcf_path):
+    genes = {}
+    variant_by_gene = defaultdict(list)
+    reader = vcf.Reader(open(vcf_path,'r'))
+    for var in reader:
+        gene_info = var.INFO.get('GENE', '')
+        if gene_info == '': continue
+        
+        gene_info_groups = gene_info.split('||')
+        general_info = gene_info_groups[0].split('|')
+        
+        # Fields are key:value pairs. Certain fields have special handling
+        # The first position will have a leading paren to exclude
+        general_info[0] = general_info[0][1:]
+        general_info = [pair.split(':') for pair in general_info]
+        gene_dict = {val[0]: val[1] for val in general_info}
+        for key in gene_dict:
+            if key != 'acc':
+                gene_dict[key] = gene_dict[key].replace('_', ' ')
+        genes[gene_dict['gi']] = gene_dict
+        variant_by_gene[gene_dict['gi']].append(var)
+
+
+    report = open(os.path.splitext(vcf_path)[0] + '.variant_report.tsv', 'w')
+    report.write('Gene\tVariant Positions\n')
+    for gene in genes.values():
+        print(gene)
+        line = "gi|{gi}|ref|{acc}| {title}".format(**gene)
+        for var in variant_by_gene[gene['gi']]:
+            line += '\t({POS}:{REF}->{ALT})'.format(**var.__dict__)
+        report.write(line + '\n')
+    report.close()
+
+        
+
+
+## VCF Filter Classes
 class FilterByChromMatch(VCFFilterBase):
     '''Filter a VCF File by regular expresion match over its CHROM column'''
     name = "regmatch"
@@ -93,7 +131,6 @@ class FilterByChromMatch(VCFFilterBase):
 
     def __repr__(self):
         return self.filter_name()
-
 class FilterAltSubstX(VCFFilterBase):
     '''Remove variants whose only alternate allele is an X'''
     name = "badalt-X"
@@ -120,7 +157,6 @@ class FilterAltSubstX(VCFFilterBase):
 
     def __repr__(self):
         return self.filter_name()
-
 class FilterByAltCallDepth(VCFFilterBase):
     '''Filter a VCF File by limiting variants to only those with at least X% Alt calls'''
     
@@ -144,7 +180,6 @@ class FilterByAltCallDepth(VCFFilterBase):
 
         if alt_reads / float(total_reads) >= self.alt_depth:
             return record
-
 class FilterByReadDepth(VCFFilterBase):
     name = 'call-depth'
     @classmethod
@@ -162,3 +197,4 @@ class FilterByReadDepth(VCFFilterBase):
     def __call__(self, record):
         if record.INFO['DP'] >= self.min_depth:
             return record
+

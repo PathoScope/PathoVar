@@ -2,9 +2,9 @@ import os
 import sys
 import argparse
 
-import snp_utils
+from pathovar.utils import sam_utils
 
-argparser = argparse.ArgumentParser(prog="pathovar.snp_caller.snp_utils")
+argparser = argparse.ArgumentParser(prog="pathovar.snp_caller.sam_utils")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
 argparser.add_argument("--test", action = "store_true", required = False, help="Enter IPython Interactive Session after execution completes [Development Only]")
 
@@ -21,7 +21,7 @@ filer_vcf_file = sub_commands.add_parser("filter-vcf", help="Filter a .vcf file"
 
 
 def filter_sam_remove(args):
-    parser = snp_utils.SAMParser(args.sam_file)
+    parser = sam_utils.SAMParser(args.sam_file)
     parser.parse_file()
     target = args.remove.decode('string-escape')
     parser.remove(target)
