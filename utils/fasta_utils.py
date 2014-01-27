@@ -143,7 +143,7 @@ class SequenceRecord(object):
         self.attributes = defline_fields
 
     def to_fasta_format(self):
-        entry = ">" + self.defline
+        entry = ">" + self.defline + '\n'
         entry += self.sequence
         return entry
 

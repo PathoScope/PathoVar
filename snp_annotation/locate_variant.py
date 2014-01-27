@@ -103,8 +103,9 @@ class EntrezAnnotationMapper(object):
 			self.save_cache()
 
 	def save_cache(self):
+		import json
 		for key,cached_annotator in self.annotation_cache.items():
-			if cached_annotator.mol_type == 'nucl': open(key + '.annot.json', 'w').write(cached_annotator.to_json())
+			if cached_annotator.mol_type == 'nucl': open(key + '.annot.json', 'w').write(json.dumps(cached_annotator.to_json_safe_dict()))
 
 	def write_annotated_vcf(self):
 		output_file = self.vcf_file[:-4] + '.anno.vcf'
@@ -222,12 +223,11 @@ class GenBankFeatureFile(object):
 			entry = self.entries[feat.gid]
 			entry.update_genome_position(feat)
 
-	def to_json(self):
-		import json
+	def to_json_safe_dict(self):
 		data_dict = {}
 		data_dict["name"] = self.parser.find("orgname_name").get_text().replace('\n','')
 		data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
-		return(json.dumps(data_dict))
+		return(data_dict)
 
 
 	def locate_snp_site(self, snp_loc):
