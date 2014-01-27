@@ -98,11 +98,13 @@ class EntrezAnnotationMapper(object):
 		for variant in self.variants:
 			annotations = self.annotate_snp(variant)
 			anno_variant = AnnotatedVariant(variant, annotations)
-			if self.verbose:
-				#print(str(variant) + " found in " + str(anno_variant.annotations))
-				pass
 			self.annotated_variants.append(anno_variant)
+		if self.verbose:
+			self.save_cache()
 
+	def save_cache(self):
+		for key,cached_annotator in self.annotation_cache.items():
+			if cached_annotator.mol_type == 'nucl': open(key + '.annot.json', 'w').write(cached_annotator.to_json())
 
 	def write_annotated_vcf(self):
 		output_file = self.vcf_file[:-4] + '.anno.vcf'
@@ -220,6 +222,13 @@ class GenBankFeatureFile(object):
 			entry = self.entries[feat.gid]
 			entry.update_genome_position(feat)
 
+	def to_json(self):
+		import json
+		data_dict = {}
+		data_dict["name"] = self.parser.find("orgname_name").get_text().replace('\n','')
+		data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
+		return(json.dumps(data_dict))
+
 
 	def locate_snp_site(self, snp_loc):
 		contains = []
@@ -287,7 +296,7 @@ class GenBankSeqEntry(object):
 		self.start  = None
 		self.end	= None
 		
-		self.amino_acid_sequence = element.find('iupacaa')
+		self.amino_acid_sequence = map(lambda x: x.get_text(), element.find_all('iupacaa'))
 		# Prune later once starts and ends are set
 		self.nucleotide_sequence = owner.chromosome
 
@@ -325,6 +334,21 @@ class GenBankSeqEntry(object):
 		rep += ')'
 		rep = re.sub(r'\s', '_', rep)
 		return rep
+
+	def to_json_safe_dict(self):
+		data_dict = copy(self.__dict__)
+		# Remove fields that don't serialize.
+		data_dict.pop('element')
+		data_dict.pop("_id")
+		data_dict.pop("_desc")
+		data_dict.pop("_inst")
+		data_dict.pop("_annot")
+		data_dict.pop('owner')
+
+		# Translate nested objects to dictionaries
+		data_dict["annotations"] = {k:v.__dict__ for k,v in data_dict["annotations"].items()}
+
+		return data_dict
 
 class AnnotationExtension(OrderedDict):
 	def __init__(self,*args, **kwargs):
@@ -412,13 +436,6 @@ class GenBankAnnotation(object):
 			rep += ')'
 		rep += ')'
 		return rep
-
-
-
-
-
-
-
 
 class UnknownAnnotationException(Exception):
 	pass

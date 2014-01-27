@@ -100,7 +100,11 @@ def vcf_to_gene_report(vcf_path):
     report.write('Gene\tVariant Positions\n')
     for gene in genes.values():
         print(gene)
-        line = "gi|{gi}|ref|{acc}| {title}".format(**gene)
+        line = "gi|{gi}|" 
+        if 'acc' in gene:
+            line +="ref|{acc}|" 
+        line += " {title}"
+        line = line.format(**gene)
         for var in variant_by_gene[gene['gi']]:
             line += '\t({POS}:{REF}->{ALT})'.format(**var.__dict__)
         report.write(line + '\n')
