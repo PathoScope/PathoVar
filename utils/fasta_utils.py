@@ -88,10 +88,13 @@ class FastaParser(object):
         outfile.close()
         return outfile.name
 
+##
+# As FastaParser, but for the FastQ File format. Works for both
+# 
 class FastQParser(FastaParser):
     def __init__(self, file_path, defline_parse_func = defline_parser, **opts):
         FastaParser.__init__(self, file_path, **opts)
-        self.newline_between = opts.get('newline_between', False)
+        self.multiline_mode = opts.get('multiline_mode', False)
 
     def process_record(self, defline, sequence, qual):
         record = SequenceRecord(defline, sequence, self.defline_parse_func)
@@ -102,10 +105,14 @@ class FastQParser(FastaParser):
         defline = ''
         sequence = ''
         qual = ''
-        state = 'newline_between' if self.newline_between else 'sequence'
+        count = 0
+        state = 'start'
         for line in open(self.file_path, 'r'):
             match = re.search(r'^@(?P<defline>[^@]+)\n', line)
-            if ( match and state == 'newline_between' and self.newline_between) or (match and not self.newline_between):
+            if state == 'qual' and count > 0:
+                qual += line
+                count-=1
+            elif match:
                 if defline != '':
                     self.process_record(defline, sequence, qual)
                 defline = match.groupdict()['defline']
@@ -114,13 +121,10 @@ class FastQParser(FastaParser):
                 state = 'sequence'
             elif re.search(r'\+\n', line):
                 state = 'qual'
-            elif line == '\n' and self.newline_between:
-                state = 'newline_between'
             else:
                 if state == 'sequence':
                     sequence += line
-                else: 
-                    qual += line
+                    count += 1
 
         self.process_record(defline, sequence, qual)
         self.parsed = True
@@ -174,3 +178,4 @@ class SequenceRecord(object):
 
     def __repr__(self):
         return "SequenceRecord(" + self.defline + ")"
+

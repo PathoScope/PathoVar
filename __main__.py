@@ -4,8 +4,8 @@ from time import time
 from collections import defaultdict
 import argparse
 
-import snp_caller
-import utils
+from pathovar import snp_caller
+from pathovar import utils
 
 argparser = argparse.ArgumentParser(prog="pathovar")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -48,7 +48,7 @@ def main(args):
 	consensus_sequences = variant_file + ".cns.fq"
 
 	snp_called_time = time()
-	print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
+	if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
 
 	snp_annotation_driver = None
 	anno_vcf = None
@@ -64,9 +64,11 @@ def main(args):
 		anno_vcf = snp_annotation_driver.write_annotated_vcf()
 
 	snp_annotated_time = time()
-	
-	print('SNP Annotation Done (%s sec)' % str(snp_annotated_time - snp_called_time))
+	if args.verbose: print('SNP Annotation Done (%s sec)' % str(snp_annotated_time - snp_called_time))
 
+	from pathovar.utils import vcf_utils
+	if args.verbose: print("Generating Gene Report.")
+	vcf_utils.vcf_to_gene_report(anno_vcf)
 
 	if(args.test):
 		import IPython
@@ -76,4 +78,5 @@ def main(args):
 if __name__ == '__main__':
 	args = argparser.parse_args()
 	main(args)
+
 

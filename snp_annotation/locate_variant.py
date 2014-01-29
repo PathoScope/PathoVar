@@ -26,7 +26,7 @@ def init_quality_filters(filter_args):
 	filters = [filt(filter_args) for filt in QUAL_FILTERS]
 	return filters
 
-UNKNOWN_ANNOTATION_STORE = dict()
+DEV_ANNOTATION_SCHEMA_STORE = dict()
 
 ##
 #
@@ -38,6 +38,11 @@ class EntrezAnnotationMapper(object):
 		self.vcf_file = vcf_file
 		self.opts = opts
 		self.verbose = opts.get("verbose", False)
+		self.cache_dir = opts.get("cache_dir", os.path.dirname(vcf_file) + os.sep + '.anno_cache')
+		try:
+			os.makedirs(self.cache_dir)
+		except OSError:
+			pass
 		self.entrez_handle = entrez_eutils.EntrezEUtilsDriver(**opts)
 		self.reader = vcf.VCFReader(open(vcf_file, 'r'))
 		self.variants = vcf_utils.filter_vcf_in_memory(self.reader, init_quality_filters(self.opts['filter_args']), keep = True)
@@ -80,7 +85,7 @@ class EntrezAnnotationMapper(object):
 		gene_id = str(gene_id)
 		result = self.entrez_handle.find_nucleotides_by_gene_id(gene_id, form = 'genbank', mode = 'xml')
 		if self.verbose and not os.path.exists(gene_id + '.genbank.' + 'xml'):
-			open(gene_id + '.genbank.' + 'xml', 'w').write(result)
+			open(self.cache_dir + os.sep + gene_id + '.genbank.' + 'xml', 'w').write(result)
 		return GenBankFeatureFile(result, opts)
 	##
 	# 
@@ -89,7 +94,7 @@ class EntrezAnnotationMapper(object):
 		gene_id = str(gene_id)
 		result = self.entrez_handle.find_protein_by_gene_id(gene_id, form = 'genbank', mode = 'xml')
 		if self.verbose and not os.path.exists(gene_id + '.peptide_record.' + 'xml'):
-			open(gene_id + '.peptide_record.' + 'xml', 'w').write(result)
+			open(self.cache_dir + os.sep + gene_id + '.peptide_record.' + 'xml', 'w').write(result)
 		return GenBankFeatureFile( result, opts)
 
 	##
@@ -105,7 +110,7 @@ class EntrezAnnotationMapper(object):
 	def save_cache(self):
 		import json
 		for key,cached_annotator in self.annotation_cache.items():
-			if cached_annotator.mol_type == 'nucl': open(key + '.annot.json', 'w').write(json.dumps(cached_annotator.to_json_safe_dict()))
+			if cached_annotator.mol_type == 'nucl': open(self.cache_dir + os.sep + key + '.annot.json', 'w').write(json.dumps(cached_annotator.to_json_safe_dict()))
 
 	def write_annotated_vcf(self):
 		output_file = self.vcf_file[:-4] + '.anno.vcf'
@@ -381,22 +386,13 @@ class GenBankAnnotation(object):
 			obj_type = str(raw_ext.find("object-id_str").get_text().strip())
 			obj_data = map(lambda x: x.get_text().strip(), raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
 			ext = AnnotationExtension()
-			if obj_type == "cddScoreData":
-				ext['from'] = int(obj_data[0])
-				ext['to'] = int(obj_data[1])
-				ext['definition'] = str(obj_data[2]).strip()
-				ext['name'] = str(obj_data[3]).strip()
-				ext['e_value'] = float(obj_data[5])
-				ext['ext_type'] = 'cddScoreData'
-				self.regions.append(ext)
-			else:
-				#print("Unknown Extension: %s" % obj_type)
-				#raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
-				UNKNOWN_ANNOTATION_STORE[obj_type] = raw_ext
-				ext = self.process_extension(raw_ext)
-				ext['ext_type'] = obj_type
-				self.regions.append(ext)
-				pass
+			#print("Unknown Extension: %s" % obj_type)
+			#raise UnknownAnnotationException("Unknown Extension: %s" % obj_type)
+			DEV_ANNOTATION_SCHEMA_STORE[obj_type] = raw_ext
+			ext = self.process_extension(raw_ext)
+			ext['ext_type'] = obj_type
+			self.regions.append(ext)
+
 
 	def __repr__(self):
 		rep = "GenBankAnnotation(Starts=%(start)s, Ends=%(end)s, name:%(name)s, regions:%(regions)s)" % self.__dict__

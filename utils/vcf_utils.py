@@ -99,7 +99,6 @@ def vcf_to_gene_report(vcf_path):
     report = open(os.path.splitext(vcf_path)[0] + '.variant_report.tsv', 'w')
     report.write('Gene\tVariant Positions\n')
     for gene in genes.values():
-        print(gene)
         line = "gi|{gi}|" 
         if 'acc' in gene:
             line +="ref|{acc}|" 
@@ -110,7 +109,27 @@ def vcf_to_gene_report(vcf_path):
         report.write(line + '\n')
     report.close()
 
+def generate_html_report_json(vcf_path, annotation_dicts):
+    genes = {}
+    variant_by_gene = defaultdict(list)
+    reader = vcf.Reader(open(vcf_path,'r'))
+    for var in reader:
+        gene_info = var.INFO.get('GENE', '')
+        if gene_info == '': continue
         
+        gene_info_groups = gene_info.split('||')
+        general_info = gene_info_groups[0].split('|')
+        
+        # Fields are key:value pairs. Certain fields have special handling
+        # The first position will have a leading paren to exclude
+        general_info[0] = general_info[0][1:]
+        general_info = [pair.split(':') for pair in general_info]
+        gene_dict = {val[0]: val[1] for val in general_info}
+        for key in gene_dict:
+            if key != 'acc':
+                gene_dict[key] = gene_dict[key].replace('_', ' ')
+        genes[gene_dict['gi']] = gene_dict
+        variant_by_gene[gene_dict['gi']].append(var)
 
 
 ## VCF Filter Classes
