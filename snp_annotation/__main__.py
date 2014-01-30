@@ -15,8 +15,10 @@ argparser = argparse.ArgumentParser(prog = "snp_annotation")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
 argparser.add_argument("vcf_file", help = "The variant call file to annotate")
 argparser.add_argument("--test", action = "store_true", required = False)
-argparser.add_argument('-d','--min-depth', type=int, default=5, help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
-argparser.add_argument('--alt-depth', type=float, default=0.4, help="The minimum ratio of all calls for a locus that must be an alternative allele [default:0.4]")
+argparser.add_argument("--no-cache", action= "store_false", default = True, help="Do not use the annotation cache to re-load annotations if they exist to speed up the annotation process.")
+argparser.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
+argparser.add_argument('--min-depth', type=int, default=5, help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
+argparser.add_argument('--alt-depth', type=float, default=0.4, help="The MAF threshold, under which variants are ignored [default:0.4]")
 
 def main():
 	args = argparser.parse_args()

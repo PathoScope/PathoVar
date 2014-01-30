@@ -8,8 +8,7 @@
         "storage_path": "databases/comprehensive_antibiotic_resistance_database/",
         "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
         "appropriate_organisms": [
-            "bacteria",
-            "virus"
+            "*"
         ]
     },
     "patric": {
@@ -20,6 +19,16 @@
         "setup_script": null,
         "appropriate_organisms": [
             "bacteria"
+        ]
+    },
+    "drugbank": {
+        "data_urls": [
+
+        ],
+        "storage_path": "databases/drugbank",
+        "setup_script": null,
+        "appropriate_organisms": [
+            "*"
         ]
     }
 }

@@ -2,3 +2,4 @@ docs/
 *.pyc
 databases/
 *.*~
+.anno_cache/

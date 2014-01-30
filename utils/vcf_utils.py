@@ -6,6 +6,9 @@ import vcf
 from vcf.parser import _Filter
 from vcf.filters import Base as VCFFilterBase
 
+from pathovar.utils import defline_parser
+from pathovar.utils.fasta_utils import SequenceRecord
+
 ## filter_vcf
 # Based on vcf_filter.py from PyVCF. Compatible with instantiated
 # PyVCF _Filter objects.
@@ -72,8 +75,7 @@ def filter_vcf_in_memory(variant_reader, filters, keep=True, short_circuit = Fal
 
     return keepers
 
-
-def vcf_to_gene_report(vcf_path):
+def get_variant_genes(vcf_path):
     genes = {}
     variant_by_gene = defaultdict(list)
     reader = vcf.Reader(open(vcf_path,'r'))
@@ -95,6 +97,10 @@ def vcf_to_gene_report(vcf_path):
         genes[gene_dict['gi']] = gene_dict
         variant_by_gene[gene_dict['gi']].append(var)
 
+    return(genes, variant_by_gene)
+
+def vcf_to_gene_report(vcf_path):
+    genes, variant_by_gene = get_variant_genes(vcf_path)
 
     report = open(os.path.splitext(vcf_path)[0] + '.variant_report.tsv', 'w')
     report.write('Gene\tVariant Positions\n')
@@ -109,27 +115,25 @@ def vcf_to_gene_report(vcf_path):
         report.write(line + '\n')
     report.close()
 
-def generate_html_report_json(vcf_path, annotation_dicts):
-    genes = {}
-    variant_by_gene = defaultdict(list)
-    reader = vcf.Reader(open(vcf_path,'r'))
-    for var in reader:
-        gene_info = var.INFO.get('GENE', '')
-        if gene_info == '': continue
-        
-        gene_info_groups = gene_info.split('||')
-        general_info = gene_info_groups[0].split('|')
-        
-        # Fields are key:value pairs. Certain fields have special handling
-        # The first position will have a leading paren to exclude
-        general_info[0] = general_info[0][1:]
-        general_info = [pair.split(':') for pair in general_info]
-        gene_dict = {val[0]: val[1] for val in general_info}
-        for key in gene_dict:
-            if key != 'acc':
-                gene_dict[key] = gene_dict[key].replace('_', ' ')
-        genes[gene_dict['gi']] = gene_dict
-        variant_by_gene[gene_dict['gi']].append(var)
+def generate_html_report_json(vcf_path, annotation_dict):
+    genes, variant_by_gene = get_variant_genes(vcf_path)
+
+def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
+    genes, variant_by_gene = get_variant_genes(vcf_path)
+    sequences = []
+    for gene in genes:
+        for val in annotation_dict.values():
+            if gene in val.entries:
+                entry = val.entries[gene]
+                defline = '>gi|%(gid)s|ref|%(accession)s| %(title)s' % entry.__dict__
+                seq_rec = SequenceRecord(defline, entry.nucleotide_sequence, defline_parser)
+                sequences.append(seq_rec)
+    fasta_name = vcf_path[:-3] + "variant_refs.fa"
+    fasta_handle = open(fasta_name, 'w')
+    for seq in sequences:
+        fasta_handle.write(seq.to_fasta_format())
+    fasta_handle.close()
+    return fasta_name
 
 
 ## VCF Filter Classes

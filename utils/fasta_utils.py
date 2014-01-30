@@ -174,8 +174,6 @@ class SequenceRecord(object):
                     last_start = None
         return undef_region
 
-
-
     def __repr__(self):
         return "SequenceRecord(" + self.defline + ")"
 
