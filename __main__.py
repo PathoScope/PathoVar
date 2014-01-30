@@ -4,8 +4,11 @@ from time import time
 from collections import defaultdict
 import argparse
 
+import pathovar
 from pathovar import snp_caller
 from pathovar import utils
+
+external_database_conf = pathovar.get_external_databases_config()
 
 argparser = argparse.ArgumentParser(prog="pathovar")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -26,6 +29,9 @@ snp_caller_args.add_argument('-b','--snp-caller-binary-location', action="store"
 
 snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
 snp_anno_args.add_argument('-a', '--annotation-engine', action='store', default = 'entrez', choices = ['entrez', 'snpeff', ''], help = "Select the program to annotate variants with [default:entrez]")
+snp_anno_args.add_argument("--no-cache", action= "store_false", default = True, help="Do not use the annotation cache to re-load annotations if they exist to speed up the annotation process.")
+snp_anno_args.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
+
 
 snp_filt_args = argparser.add_argument_group("Variant Filtering Options")
 snp_filt_args.add_argument('-d','--min-depth', type=int, default=5, help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
@@ -69,6 +75,7 @@ def main(args):
 	from pathovar.utils import vcf_utils
 	if args.verbose: print("Generating Gene Report.")
 	vcf_utils.vcf_to_gene_report(anno_vcf)
+	ref_fa = vcf_utils.generate_reference_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
 
 	if(args.test):
 		import IPython
