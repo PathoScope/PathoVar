@@ -45,11 +45,19 @@ def main():
 	ref_fa = vcf_utils.generate_reference_fasta_for_variants(anno_vcf, annotation_mapper.annotation_cache)
 
 	from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDNucleotideBlastAnnotator
+	from pathovar.snp_annotation.drugbank_annotator import DrugBankNucleotideBlastAnnotator
+	
 	card_blast = CARDNucleotideBlastAnnotator()
 	card_blast.query_with_nucleotides(ref_fa)
 	
 	if args.verbose: print("Waiting for CARD blastn results...")
 	card_res = card_blast.wait_for_results()
+
+	drugbank_blast = DrugBankNucleotideBlastAnnotator()
+	drugbank_blast.query_with_nucleotides(ref_fa)
+
+	if args.verbose: print("Waiting for DrugBank blastn results...")
+	drugbank_res = drugbank_blast.wait_for_results()
 
 	print("Annotation Complete: %s sec" % str(time() - timer))
 

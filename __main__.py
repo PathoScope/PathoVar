@@ -87,7 +87,7 @@ def main(args):
 
 
 	## Block while annotations run
-	
+	card_res = card_blast.wait_for_results()
 
 	if(args.test):
 		import IPython

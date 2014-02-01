@@ -17,7 +17,7 @@ class CARDNucleotideBlastAnnotator(object):
 	def __init__(self, **opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
-		self.blast_drivers = map(lambda dbf: blast_driver.BlastAnnotationDriver(dbf, "nucleotide"), sequence_db_paths)
+		self.blast_drivers = map(lambda dbf: blast_driver.BlastAnnotationDriver(dbf, blast_driver.NUCLEOTIDE), sequence_db_paths)
 		
 
 	@property

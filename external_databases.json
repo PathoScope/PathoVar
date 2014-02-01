@@ -23,10 +23,13 @@
     },
     "drugbank": {
         "data_urls": [
-
+            "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_target.fasta.zip",
+            "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_enzyme.fasta.zip",
+            "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_transporter.fasta.zip",
+            "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_carrier.fasta.zip"
         ],
-        "storage_path": "databases/drugbank",
-        "setup_script": null,
+        "storage_path": "databases/drugbank/",
+        "setup_script": "setup/drugbank_setup.py",
         "appropriate_organisms": [
             "*"
         ]

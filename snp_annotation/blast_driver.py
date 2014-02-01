@@ -37,9 +37,10 @@ def main(args):
 	print(stdout)
 	print(stderr)
 
+NUCLEOTIDE = "nucl"
+PROTEIN = "prot"
 class BlastAnnotationDriver(object):
-	NUCLEOTIDE = "nucleotide"
-	PROTEIN = "protein"
+
 	def __init__(self, database_path, database_type, bin_dir = '', **opts):
 		self.database_path = database_path
 		self.database_type = database_type
@@ -60,7 +61,7 @@ class BlastAnnotationDriver(object):
 			return self.results()
 
 	def is_built(self):
-		if self.database_type == 'nucleotide':
+		if self.database_type == NUCLEOTIDE:
 			return (os.path.exists(self.database_path + '.nhr')	and
 				os.path.exists(self.database_path + '.nsq') and
 				os.path.exists(self.database_path + '.nin'))
@@ -75,7 +76,7 @@ class BlastAnnotationDriver(object):
 		args = {'in': self.database_path, 'dbtype': self.database_type}
 		proc = subprocess.call(self.bin_dir + "makeblastdb" + 
 			' -in {in} -dbtype {dbtype}'.format(**args), shell = True)
-		if proc != 0: 
+		if not self.is_built():
 			raise IOError("Blast Database: makeblastdb Failure (%s)" % self.database_path)
 
 	def _run_blast(self, query_file, cmd, **opts):
