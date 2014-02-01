@@ -10,6 +10,10 @@ __all__ = ['snp_caller', 'web', 'snp_annotation', 'tests', 'setup']
 def get_external_databases_config():
     return json.load(open(os.path.dirname(__file__) + '/external_databases.json', 'r'))
 
+INSTALL_DIR = os.path.dirname(__file__)
+
+
+
 ##
 # Installing Required Packages
 #

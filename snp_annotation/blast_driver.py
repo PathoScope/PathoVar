@@ -4,7 +4,10 @@
 import os
 import sys
 import subprocess
+
 from bs4 import BeautifulSoup
+
+from pathovar.utils import defline_parser
 
 ## Location of the ncbi-blast+ binaries
 BLAST_BIN_DIR = ""
@@ -46,6 +49,8 @@ class BlastAnnotationDriver(object):
 		self.process = None
 		self.db_name = os.path.splitext(os.path.basename(self.database_path))[0]
 		self.outfile = None
+		if not self.is_built():
+			self.build_database()
 
 	def results(self):
 		if self.process.returncode == 0 and outfile:
@@ -107,23 +112,62 @@ class BlastResultsXMLParser(object):
 		self.file_path = file_path
 		self.opts = opts
 		self.parser = BeautifulSoup(''.join(open(file_path).readlines()))
-		#self.hits = self.parser.find_all()
+		self.queries = [BlastResultsQuery(iteration) for iteration in self.parser.find_all('iteration')]
+		self.queries = {defline_parser(query.query_def)['gene_id']: query for query in self.queries if len(query.hits) > 0}
 
 
-class BlastResultHit(object):
-	pass
+class BlastResultsQuery(object):
+	def __init__(self, parser):
+		self.parser = parser
+		self.query_def = parser.find("iteration_query-def").get_text()
+		self.__len__ = len(parser.find("iteration_query-len").get_text())
+		self.hits = sorted([BlastResultsHit(h) for h in parser.find_all("hit")], key=lambda x: x.e_value)
 
-class BlastResulHSP(object):
-	pass
+	def __repr__(self):
+		rep = 'BlastResultQuery(%s Hits:%d)' % (self.query_def, len(self.hits))
+		return rep
 
+class BlastResultsHit(object):
+	def __init__(self, parser):
+		self.parser = parser
+		self.hit_def = parser.find('hit_def').get_text()
+		self.__len__ = int(parser.find("hit_len").get_text())
+		self.hsps = [BlastResultsHSP(hsp) for hsp in parser.find_all("hsp")]
+		self.e_value = min(self.hsps, key = lambda x: x.e_value).e_value
 
+	def __repr__(self):
+		rep = "BlastResultHit(%s E Value:%0.000f HSPs:%d)" % (self.hit_def, self.e_value, len(self.hsps))
+		return rep
 
+class BlastResultsHSP(object):
+	def __init__(self, parser):
+		self.parser = parser
+		self.e_value = float(parser.find("hsp_evalue").get_text())
+		# Query range
+		self.query_from = int(parser.find("hsp_query-from").get_text())
+		self.query_to = int(parser.find("hsp_query-to").get_text())
 
+		# Hit range
+		self.hit_from = int(parser.find("hsp_hit-from").get_text())
+		self.hit_to = int(parser.find("hsp_hit-to").get_text())
 
+		# Frames (Nucleotide Derived Only)
+		try:
+			self.query_frame = parser.find('hsp_query-frame').get_text()
+			self.hit_frame = parser.find('hsp_hit-frame').get_text()
+		except ValueError, e:
+			pass
+		# Alignment
+		self.identity = parser.find("hsp_identity").get_text()
+		self.gaps = int(parser.find('hsp_gaps').get_text())
+		self.__len__ = int(parser.find('hsp_align-len').get_text())
+		self.qseq = parser.find("hsp_qseq").get_text()
+		self.hseq = parser.find("hsp_hseq").get_text()
+		self.midline = parser.find("hsp_midline").get_text()
 
-
-
-
+	def __repr__(self):
+		rep = "BlastResultsHSP(E Value:%0.000f)" % self.e_value
+		return rep
 
 class BlastDriverException(Exception):
 	pass
@@ -133,4 +177,3 @@ class BlastDriverException(Exception):
 if __name__ == '__main__':
 	
 	main(sys.argv)
-

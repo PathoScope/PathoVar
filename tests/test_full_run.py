@@ -6,7 +6,8 @@ import pathovar
 from pathovar.__main__ import main
 from pathovar.web import entrez_eutils
 from pathovar.snp_caller import samtools_snp_caller
-from pathovar.snp_annotation import locate_variant
+from pathovar.snp_annotation import locate_variant, comprehensive_antibiotic_resistance_database_annotator as CARD
+
 from pathovar import utils
 from pathovar.utils import vcf_utils
 
@@ -23,6 +24,7 @@ global_args.snp_caller = "samtools"
 global_args.snp_caller_binary_location = ""
 
 global_args.annotation_engine = "entrez"
+global_args.no_cache = True
 
 global_args.sam_file = "data/updated_CC_287_cDNA_sanger_clean_target0_2.sam"
 global_args.reference_genomes = "data/rsv.fa"
@@ -30,6 +32,7 @@ global_args.reference_genomes = "data/rsv.fa"
 global_args.min_depth = 5
 global_args.alt_depth = 0.4
 
+ref_fa = None
 
 class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
     
@@ -65,10 +68,13 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         self.assertTrue(os.path.exists(global_args.sam_file[:-3] + 'anno.vcf'), "Calls locate_variant.py did not produce an annotated VCF File")
         vcf_utils.vcf_to_gene_report(anno_vcf)
         self.assertTrue(os.path.exists(global_args.sam_file[:-3] + 'anno.variant_report.tsv'), "Calls to vcf_utils.py did not produce an annotated variant report")
+        global ref_fa
         ref_fa = vcf_utils.generate_reference_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
         self.assertTrue(os.path.exists(ref_fa), "Calls to vcf_utils did not produce a reference fasta for sequences with variants")
     
-
+    def test_step_3_external_database_search(self):
+        self.assertTrue(os.path.exists(ref_fa), "Previous steps did not initialize reference fasta for sequences with variants")
+        card_annotator = CARD.CARDNucleotideBlastAnnotator()
 
 
 if __name__ == '__main__':

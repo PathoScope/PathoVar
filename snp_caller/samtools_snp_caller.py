@@ -120,7 +120,7 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             result = os.system('{bin_dir}bcftools view {intermediary} | {bin_dir}vcfutils.pl varFilter -D{max_read_depth} > {final_vcf}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during bcftools view | vcfutils.pl varFilter for %s" % bam_file)
-            result = os.system('{bin_dir}bcftools view -cg {intermediary} | vcfutils.pl vcf2fq > {final_vcf}{consensus-fq}'.format(**opts))
+            result = os.system('{bin_dir}samtools mpileup -uf {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}{consensus-fq}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during vcfutils.pl vcf2fq %s" % bam_file)
             vcf_files.append(opts["final_vcf"])

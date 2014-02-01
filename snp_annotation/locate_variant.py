@@ -47,7 +47,7 @@ class EntrezAnnotationMapper(object):
 			os.makedirs(self.cache_dir)
 		except OSError, e:
 			pass
-		self.use_cache = opts.get("no_cache", True)
+		self.no_cache = opts.get("no_cache", False)
 		self.entrez_handle = entrez_eutils.EntrezEUtilsDriver(**opts)
 		self.reader = vcf.VCFReader(open(vcf_file, 'r'))
 		self.variants = vcf_utils.filter_vcf_in_memory(self.reader, init_quality_filters(self.opts['filter_args']), keep = True)
@@ -64,10 +64,21 @@ class EntrezAnnotationMapper(object):
 		opt_args = dict(verbose=self.verbose)
 		if "gene_id" in ids:
 			if 'gene_id-'+ids['gene_id'] not in self.annotation_cache:
-				if os.path.exists(self.cache_dir + os.sep + 'gene_id-'+ids['gene_id'] + '.json') and self.use_cache:
-					json_dict = json.load(open(self.cache_dir + os.sep + 'gene_id-'+ids['gene_id'] + '.json'))
-					self.annotation_cache['gene_id-'+ids['gene_id']] = GenBankFeatureFile(json_dict, json=True, mol_type='nucl', **opt_args)
-				self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], xml=True, **opt_args)
+				cache_file = self.cache_dir + os.sep + 'gene_id-'+ids['gene_id'] + '.annot.json'
+				if self.verbose: print("Searching for cache file: %s" % cache_file)
+				if os.path.exists(cache_file) and not self.no_cache:
+					if self.verbose: print('Cache Hit')
+					try:
+						json_dict = json.load(open(cache_file))
+						self.annotation_cache['gene_id-'+ids['gene_id']] = GenBankFeatureFile(json_dict, json=True, mol_type='nucl', **opt_args)
+					except ValueError, e: 
+						if self.verbose: print(e)
+						self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], xml=True, **opt_args)
+
+				else:
+					if self.verbose and not self.no_cache: print('Cache Miss')
+					self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], xml=True, **opt_args)
+			if self.verbose: print("Localizing variant at positon %d" % variant.POS)
 			annotations.extend(self.annotation_cache['gene_id-'+ids['gene_id']].locate_snp_site(variant.POS))
 		return annotations
 
@@ -112,13 +123,15 @@ class EntrezAnnotationMapper(object):
 			annotations = self.annotate_snp(variant)
 			anno_variant = AnnotatedVariant(variant, annotations)
 			self.annotated_variants.append(anno_variant)
-			self.save_cache()
+		self.save_cache()
 
 	def save_cache(self):
+		if self.verbose: print("Saving Anntation Cache")
 		for key,cached_annotator in self.annotation_cache.items():
 			if cached_annotator.mol_type == 'nucl': open(self.cache_dir + os.sep + key + '.annot.json', 'w').write(json.dumps(cached_annotator.to_json_safe_dict()))
 
 	def write_annotated_vcf(self):
+		if self.verbose: print("Writing annotated .vcf file")
 		output_file = self.vcf_file[:-4] + '.anno.vcf'
 		writer = vcf.Writer(open(output_file, 'w'), self.reader)
 		for variant in self.annotated_variants:
@@ -146,46 +159,6 @@ class AnnotatedVariant(vcf.model._Record):
 		rep = "Record(CHROM=%(CHROM)s, POS=%(POS)s, REF=%(REF)s, ALT=%(ALT)s), ANNO=%(annotations)s" % self.__dict__
 		return rep
 
-
-# VariantTuple = namedtuple("VariantTuple",["alt_allele", "position"])
-# class MutantSequenceFactory(object):
-# 	def __init__(self, gid, name, reference_sequence, variant_list = None, opts = None):
-# 		if variant_list is None:
-# 			variant_list = []
-# 		if opts is None:
-# 			opts = dict(verbose = False)
-# 		self.gid = gid
-# 		self.name = name
-# 		self.reference_sequence = reference_sequence
-# 		self.variants = variant_list
-# 		self.opts = opts
-# 		self.mutant_sequences = []
-
-# 	def compute_mutants(self):
-# 		for variant in self.variants:
-# 			for alt in variant.ALT:
-# 				variant_tuple = VariantTuple(variant.alt, variant.POS, [])
-
-
-# class MutantSequence(list):
-# 	## 
-# 	# variant_positions is a list of 3-tuples, (ALT_ALLELE, POSITION, MUTATION_TYPE_LIST)
-# 	def __init__(self, reference_sequence, variant_positions, annotations):
-# 		list.__init__(self, reference_sequence)
-# 		self.variant_positions = variant_positions
-# 		self.annotations = annotations
-# 		for variant in self.variant_positions:
-# 			self[variant[1]] = variant[0]
-# 			for annotation in self.annotations:
-# 				if annotation.start <= variant[1] <= annotation.end:
-# 					variant[2].append(annotation)
-# 					for region in annotation.regions:
-# 						if region.start <= variant[1] <= region.end:
-# 							variant[2].append(region)
-
-
-
-
 ## GenBankFeatureFile
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
@@ -197,7 +170,7 @@ class GenBankFeatureFile(object):
 		timer = time()
 		self.parser = None
 		self.chromosome = None
-		
+		self.org_name = None
 		self.entries = {}
 		self.features = []
 		if 'xml' in opts:
@@ -210,10 +183,11 @@ class GenBankFeatureFile(object):
 		self.parser = BeautifulSoup(xml)
 		if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
 		if self.verbose: print("Searching for Chromosome")
-		self.chromosome = self.parser.find('iupacna')
+		self.org_name = self.parser.find("orgname_name").get_text().replace('\n','')
+		self.chromosome = self.parser.find_all('iupacna')
 		if self.chromosome:
-			self.chromosome = self.chromosome.get_text().strip()
-			if self.verbose: print("Found")
+			self.chromosome = ''.join(map(lambda x: x.get_text().strip(), self.chromosome))
+			if self.verbose: print("Found, %d bp" % len(self.chromosome))
 
 		if self.verbose: print("Gathering Entries and Features")
 		self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self, xml = True), self.parser.find_all("seq-entry")) }
@@ -232,6 +206,7 @@ class GenBankFeatureFile(object):
 		# genomic span is the largest span. This works for single-span entities. 
 		if self.verbose: print("Computing Genomic Coordinates")
 		feature_dict = {}
+		chromosome_len = len(self.chromosome)
 		for feat in self.features:
 			if feat.starts:
 				if feat.gid not in feature_dict:
@@ -239,6 +214,8 @@ class GenBankFeatureFile(object):
 				else:
 					if feat.end - feat.start > feature_dict[feat.gid].end - feature_dict[feat.gid].start:
 						feature_dict[feat.gid] = feat
+					if feat.end > chromosome_len:
+						print("%r exceeds chromosome size" % feat)
 		self.features = feature_dict.values()
 		
 		# Using the genomic position data just computed, update coordinate information for the 
@@ -248,29 +225,33 @@ class GenBankFeatureFile(object):
 			entry.update_genome_position(feat)
 
 	def _from_json(self, json_dict):
+		if self.verbose: print("Starting to load from JSON")
+		timer = time()
+		self.org_name = json_dict['name']
 		self.entries = {k:GenBankSeqEntry(v, self, **self.opts) for k,v in json_dict['entries'].items()}
+		if self.verbose: print("Loading from JSON Complete (%rs)" % (time() - timer))
 
 
 	def to_json_safe_dict(self):
 		data_dict = {}
-		data_dict["name"] = self.parser.find("orgname_name").get_text().replace('\n','')
+		data_dict["name"] = self.org_name
 		data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
 		return(data_dict)
 
 	def locate_snp_site(self, snp_loc):
-		contains = []
-		last_end = -1
-		for entry in self.entries.values():
+		last_entry_ind = 0
+		entries = self.entries.values()
+		for ind, entry in enumerate(entries[last_entry_ind:]):
+			#if self.verbose: print(entry.start, entry.end)
+			#if self.verbose: print("check %d >= %d and %d <= %d" % (snp_loc, entry.start, snp_loc, entry.end))
 			if snp_loc >= entry.start and snp_loc <= entry.end:
-				contains.append(entry)
 				if self.verbose: print("SNP Location %s mapped within %r" % (snp_loc, entry))
-
-		return contains
+				last_entry_ind += ind
+				yield entry
 
 	def __repr__(self):
 		rep = "GenBankFile(" + self.mol_type + "|" + ', '.join(map(repr, self.entries)) + ")"
 		return rep
-
 
 ## GenBankFeature
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
@@ -368,20 +349,29 @@ class GenBankSeqEntry(object):
 
 	def _from_json(self, json_dict):
 		self.gid = json_dict['gid']
+		self.accession = json_dict['accession']
+		
 		self.strand = json_dict['strand']
 		self.amino_acid_sequence = json_dict['amino_acid_sequence']
 		self.nucleotide_sequence = json_dict['nucleotide_sequence']
+		
 		self.title = json_dict['title']
 		self.comments = json_dict['comments']
-		self.annotations = {k:enBankAnnotation(v, json=True) for k,v in json_dict['annotations'].items()}
+		
+		self.start =  json_dict["start"]
+		self.end = json_dict["end"]
+		self.starts = json_dict["starts"]
+		self.ends =  json_dict["ends"]
+		
+		self.annotations = {k:GenBankAnnotation(v, json=True) for k,v in json_dict['annotations'].items()}
 
 	def update_genome_position(self, feature):
 		self.starts = feature.starts
 		self.ends   = feature.ends  
 		self.start  = feature.start 
 		self.end    = feature.end
-		if self.nucleotide_sequence:
-			self.nucleotide_sequence = self.nucleotide_sequence[self.start:self.end]
+		if self.owner.mol_type == 'nucl':
+			self.nucleotide_sequence = self.owner.chromosome[self.start:self.end]
 
 	def __repr__(self):
 		rep = "GenBankSeqEntry(gi=%(gid)s, Title=%(title)s, ACC=%(accession)s)" 
@@ -430,7 +420,6 @@ class AnnotationExtension(OrderedDict):
 
 	def __str__(self):
 		return repr(self)
-
 
 class GenBankAnnotation(object):
 	def __init__(self, data, **opts):

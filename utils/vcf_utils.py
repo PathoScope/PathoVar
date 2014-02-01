@@ -1,5 +1,6 @@
 import re
 import os
+import json
 from collections import defaultdict
 # 3rd Party Imports
 import vcf
@@ -117,15 +118,32 @@ def vcf_to_gene_report(vcf_path):
 
 def generate_html_report_json(vcf_path, annotation_dict):
     genes, variant_by_gene = get_variant_genes(vcf_path)
+    variant_by_gene = {gene:[{"start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT)} for var in variant_by_gene[gene]] for gene in variant_by_gene}
+    json_dict = {}
+    for gene in genes:
+        for org,val in annotation_dict.items():
+            if gene in val.entries:
+                if val.org_name not in json_dict:
+                    json_dict[val.org_name] = {'name':val.org_name,'entries':{}}
+                if gene not in json_dict:
+                    entry = val.entries[gene]
+                    json_dict[val.org_name]['entries'][entry.gid] = entry.to_json_safe_dict()
+                    json_dict[val.org_name]['entries'][entry.gid]['variants'] = variant_by_gene[gene]
+    # Drop the keys, passing only a list of unique reference strain annotations
+    json.dump(json_dict.values(), open(vcf_path[:-3] + 'json', 'w'))
+    return vcf_path[:-3] + 'json'
+
 
 def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
     genes, variant_by_gene = get_variant_genes(vcf_path)
+
     sequences = []
     for gene in genes:
         for val in annotation_dict.values():
             if gene in val.entries:
                 entry = val.entries[gene]
-                defline = '>gi|%(gid)s|ref|%(accession)s| %(title)s' % entry.__dict__
+                assert entry.nucleotide_sequence != ""
+                defline = 'gi|%(gid)s|ref|%(accession)s| %(title)s' % entry.__dict__
                 seq_rec = SequenceRecord(defline, entry.nucleotide_sequence, defline_parser)
                 sequences.append(seq_rec)
     fasta_name = vcf_path[:-3] + "variant_refs.fa"
@@ -134,6 +152,8 @@ def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
         fasta_handle.write(seq.to_fasta_format())
     fasta_handle.close()
     return fasta_name
+
+
 
 
 ## VCF Filter Classes
@@ -225,3 +245,4 @@ class FilterByReadDepth(VCFFilterBase):
         if record.INFO['DP'] >= self.min_depth:
             return record
 
+#END            

@@ -148,7 +148,7 @@ class SequenceRecord(object):
 
     def to_fasta_format(self):
         entry = ">" + self.defline + '\n'
-        entry += self.sequence
+        entry += self.sequence + '\n'
         return entry
 
     def to_fastq_format(self):
