@@ -6,8 +6,9 @@ from time import time
 
 import vcf
 
-import locate_variant
+import pathovar
 from pathovar import utils
+from pathovar.snp_annotation import locate_variant
 
 argparser = argparse.ArgumentParser(prog = "snp_annotation")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -44,30 +45,29 @@ def main():
 	vcf_utils.vcf_to_gene_report(anno_vcf)
 	ref_fa = vcf_utils.generate_reference_fasta_for_variants(anno_vcf, annotation_mapper.annotation_cache)
 
-	from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDNucleotideBlastAnnotator
-	from pathovar.snp_annotation.drugbank_annotator import DrugBankNucleotideBlastAnnotator
-	
-	card_blast = CARDNucleotideBlastAnnotator()
-	card_blast.query_with_nucleotides(ref_fa)
-	
-	if args.verbose: print("Waiting for CARD blastn results...")
-	card_res = card_blast.wait_for_results()
+	## Load internal configuration file
+	external_database_conf = pathovar.get_external_databases_config()
+	enabled_databases = [database_name for database_name, database_conf in external_database_conf.items() if database_conf['enabled']]
+	external_database_results = {}
+	# OPT-IN DATABASES
+	if "comprehensive_antibiotic_resistance_database" in enabled_databases:
+		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDNucleotideBlastAnnotator
+		card_blast = CARDNucleotideBlastAnnotator()
+		card_blast.query_with_nucleotides(ref_fa)
 
-	drugbank_blast = DrugBankNucleotideBlastAnnotator()
-	drugbank_blast.query_with_nucleotides(ref_fa)
+		# Block while annotations run
+		external_database_results["comprehensive_antibiotic_resistance_database"] = card_blast.wait_for_results()
 
-	if args.verbose: print("Waiting for DrugBank blastn results...")
-	drugbank_res = drugbank_blast.wait_for_results()
+	if "drugbank" in enabled_databases:
+		from pathovar.snp_annotation.drugbank_annotator import DrugBankNucleotideBlastAnnotator
+		drugbank_blast = DrugBankNucleotideBlastAnnotator()
+		drugbank_blast.query_with_nucleotides(ref_fa)
 
-	print("Annotation Complete: %s sec" % str(time() - timer))
+		# Block while annotations run
+		external_database_results["drugbank"] = drugbank_blast.wait_for_results()
 
 	if(args.test):
 		import IPython
 		IPython.embed()
-
 if __name__ == '__main__':
 	main()
-
-
-
-#END

@@ -9,7 +9,8 @@
         "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
         "appropriate_organisms": [
             "*"
-        ]
+        ],
+        "enabled": true
     },
     "patric": {
         "data_urls": [
@@ -19,7 +20,8 @@
         "setup_script": null,
         "appropriate_organisms": [
             "bacteria"
-        ]
+        ],
+        "enabled": false
     },
     "drugbank": {
         "data_urls": [
@@ -32,6 +34,7 @@
         "setup_script": "setup/drugbank_setup.py",
         "appropriate_organisms": [
             "*"
-        ]
+        ],
+        "enabled": true
     }
 }
