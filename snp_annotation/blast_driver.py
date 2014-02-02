@@ -107,7 +107,59 @@ class BlastAnnotationDriver(object):
 		return self._run_blast(query, cmd, **opts)
 
 
+class NucleotideDatabaseBlastAnnotatorBase(object):
+	def __init__(self, database_file_paths, **opts):
+		self.opts = opts
+		self.verbose = opts.get('verbose', False)
+		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, NUCLEOTIDE), database_file_paths)
 
+	@property
+	def processes(self):
+		return [b.process for b in self.blast_drivers]
+
+	def wait_for_results(self):
+		ret_codes = [b.process.wait() for b in self.blast_drivers]
+		if sum(ret_codes) != 0:
+			raise BlastDriverException("A %s Blast job failed %r" % (str(type(self)), ret_codes))
+		result_files_dict = {self.blast_drivers[ind].db_name:BlastResultsXMLParser(outfile) for ind, outfile in enumerate(self.outfiles)}
+		return result_files_dict
+
+	@property
+	def outfiles(self):
+		return [b.outfile for b in self.blast_drivers]
+
+	def query_with_nucleotides(self, query, **opts):
+		for blaster in self.blast_drivers:
+			if self.verbose: print("Blasting against %s" % blaster.db_name)
+			proc = blaster.blast_with_nucleotides(query, **opts)
+
+class ProteinDatabaseBlastAnnotatorBase(object):
+	def __init__(self, database_file_paths, **opts):
+		self.opts = opts
+		self.verbose = opts.get('verbose', False)
+		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, PROTEIN), database_file_paths)
+
+	@property
+	def processes(self):
+		return [b.process for b in self.blast_drivers]
+
+	def wait_for_results(self):
+		ret_codes = [b.process.wait() for b in self.blast_drivers]
+		if sum(ret_codes) != 0:
+			raise BlastDriverException("A %s Blast job failed %r" % (str(type(self)), ret_codes))
+		result_files_dict = {self.blast_drivers[ind].db_name:BlastResultsXMLParser(outfile) for ind, outfile in enumerate(self.outfiles)}
+		return result_files_dict
+
+	@property
+	def outfiles(self):
+		return [b.outfile for b in self.blast_drivers]
+
+	def query_with_proteins(self, query, **opts):
+		for blaster in self.blast_drivers:
+			if self.verbose: print("Blasting against %s" % blaster.db_name)
+			proc = blaster.blast_with_proteins(query, **opts)
+
+## Blast Results Parsing
 class BlastResultsXMLParser(object):
 	def __init__(self, file_path, **opts):
 		self.file_path = file_path

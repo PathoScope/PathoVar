@@ -156,8 +156,8 @@ def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
 def generate_mutant_sequences(json_dict):
     sequences = []
 
-    for variant_genes in json_dict:
-        for gene in variant_genes["entries"].values():
+    for org_name in json_dict:
+        for gene in json_dict[org_name]["entries"].values():
                 assert gene['nucleotide_sequence'] != ""
                 defline = 'gi|%(gid)s|ref|%(accession)s| %(title)s' % gene
                 seq_rec = MutatedSequenceRecord(defline, gene['nucleotide_sequence'], defline_parser, **gene)
