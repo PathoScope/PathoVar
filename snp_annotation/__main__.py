@@ -49,6 +49,7 @@ def main():
 	external_database_conf = pathovar.get_external_databases_config()
 	enabled_databases = [database_name for database_name, database_conf in external_database_conf.items() if database_conf['enabled']]
 	external_database_results = {}
+	
 	# OPT-IN DATABASES
 	if "comprehensive_antibiotic_resistance_database" in enabled_databases:
 		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDNucleotideBlastAnnotator
@@ -66,6 +67,11 @@ def main():
 		# Block while annotations run
 		external_database_results["drugbank"] = drugbank_blast.wait_for_results()
 
+	
+	json_file, json_data = vcf_utils.generate_html_report_json(anno_vcf, annotation_mapper.annotation_cache)
+	mutant_sequences = vcf_utils.generate_mutant_sequences(json_data)
+
+	print("Annotation Complete (%r sec)" % (time() - timer))
 	if(args.test):
 		import IPython
 		IPython.embed()

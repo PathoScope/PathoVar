@@ -20,6 +20,7 @@ from pathovar.web import entrez_eutils
 
 from pathovar import utils
 from pathovar.utils import vcf_utils
+from pathovar.utils.fasta_utils import SequenceRecord
 
 QUAL_FILTERS = [vcf_utils.FilterByAltCallDepth, vcf_utils.FilterByReadDepth]
 
@@ -78,8 +79,8 @@ class EntrezAnnotationMapper(object):
 				else:
 					if self.verbose and not self.no_cache: print('Cache Miss')
 					self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], xml=True, **opt_args)
-			if self.verbose: print("Localizing variant at positon %d" % variant.POS)
-			annotations.extend(self.annotation_cache['gene_id-'+ids['gene_id']].locate_snp_site(variant.POS))
+			if self.verbose: print("Localizing variant at positon %r" % [variant.start, variant.end,])
+			annotations.extend(self.annotation_cache['gene_id-'+ids['gene_id']].locate_snp_site(variant))
 		return annotations
 
 	##
@@ -128,7 +129,8 @@ class EntrezAnnotationMapper(object):
 	def save_cache(self):
 		if self.verbose: print("Saving Anntation Cache")
 		for key,cached_annotator in self.annotation_cache.items():
-			if cached_annotator.mol_type == 'nucl': open(self.cache_dir + os.sep + key + '.annot.json', 'w').write(json.dumps(cached_annotator.to_json_safe_dict()))
+			if cached_annotator.mol_type == 'nucl': 
+				open(self.cache_dir + os.sep + key + '.annot.json', 'w').write(json.dumps(cached_annotator.to_json_safe_dict()))
 
 	def write_annotated_vcf(self):
 		if self.verbose: print("Writing annotated .vcf file")
@@ -159,6 +161,8 @@ class AnnotatedVariant(vcf.model._Record):
 		rep = "Record(CHROM=%(CHROM)s, POS=%(POS)s, REF=%(REF)s, ALT=%(ALT)s), ANNO=%(annotations)s" % self.__dict__
 		return rep
 
+
+
 ## GenBankFeatureFile
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
@@ -171,6 +175,7 @@ class GenBankFeatureFile(object):
 		self.parser = None
 		self.chromosome = None
 		self.org_name = None
+		self.genetic_code = None
 		self.entries = {}
 		self.features = []
 		if 'xml' in opts:
@@ -184,6 +189,7 @@ class GenBankFeatureFile(object):
 		if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
 		if self.verbose: print("Searching for Chromosome")
 		self.org_name = self.parser.find("orgname_name").get_text().replace('\n','')
+		self.genetic_code = int(self.parser.find("orgname_gcode").get_text())
 		self.chromosome = self.parser.find_all('iupacna')
 		if self.chromosome:
 			self.chromosome = ''.join(map(lambda x: x.get_text().strip(), self.chromosome))
@@ -228,6 +234,7 @@ class GenBankFeatureFile(object):
 		if self.verbose: print("Starting to load from JSON")
 		timer = time()
 		self.org_name = json_dict['name']
+		self.genetic_code = json_dict.get('genetic_code', None)
 		self.entries = {k:GenBankSeqEntry(v, self, **self.opts) for k,v in json_dict['entries'].items()}
 		if self.verbose: print("Loading from JSON Complete (%rs)" % (time() - timer))
 
@@ -235,17 +242,19 @@ class GenBankFeatureFile(object):
 	def to_json_safe_dict(self):
 		data_dict = {}
 		data_dict["name"] = self.org_name
+		data_dict['genetic_code'] = self.genetic_code
 		data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
 		return(data_dict)
 
-	def locate_snp_site(self, snp_loc):
+	def locate_snp_site(self, snp):
 		last_entry_ind = 0
 		entries = self.entries.values()
 		for ind, entry in enumerate(entries[last_entry_ind:]):
 			#if self.verbose: print(entry.start, entry.end)
 			#if self.verbose: print("check %d >= %d and %d <= %d" % (snp_loc, entry.start, snp_loc, entry.end))
-			if snp_loc >= entry.start and snp_loc <= entry.end:
-				if self.verbose: print("SNP Location %s mapped within %r" % (snp_loc, entry))
+			if (snp.start >= entry.start and snp.start <= entry.end) or (snp.end >= entry.end and snp.start <= entry.end) \
+			or (snp.start <= entry.start and snp.end >= entry.start):
+				if self.verbose: print("SNP Location %r mapped within %r" % ([snp.start, snp.end], entry))
 				last_entry_ind += ind
 				yield entry
 
@@ -273,7 +282,6 @@ class GenBankFeature(object):
 			self.start = min(self.starts)
 			self.end = max(self.ends)
 		else:
-			#print("No Coordinates for %s" % self.gid)
 			pass
 
 		# Likely to be empty

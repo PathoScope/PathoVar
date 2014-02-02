@@ -137,14 +137,14 @@ class FastQParser(FastaParser):
         return outfile.name
 
 class SequenceRecord(object):
-    def __init__(self, defline, sequence, defline_parser_func):
+    def __init__(self, defline, sequence, defline_parser_func, **attributes):
         self.defline = defline
         defline_fields = defline_parser_func(defline)
         self.org_name = defline_fields.get('org_name','-')
         self.tax_id = defline_fields.get('tax_id','-')
         self.gene_id = defline_fields.get('gene_id', '-')
         self.sequence = sequence
-        self.attributes = defline_fields
+        self.attributes = dict(defline_fields, **attributes)
 
     def to_fasta_format(self):
         entry = ">" + self.defline + '\n'
@@ -176,4 +176,73 @@ class SequenceRecord(object):
 
     def __repr__(self):
         return "SequenceRecord(" + self.defline + ")"
+
+MUT_SYM = "$"
+class MutatedSequenceRecord(SequenceRecord):
+    def __init__(self, defline, sequence, defline_parser_func = defline_parser, **attributes):
+        SequenceRecord.__init__(self, defline, sequence, defline_parser_func, **attributes)
+        self.mutated_sequence = list(self.sequence)
+        self.mutated_indices = []
+
+    def sweep_mutations(self):
+        for var in self.attributes['variants']:
+            print("Sequence Start: ", self.attributes['start'])
+            print("Variant Start: ", var["start"])
+            expected_ref = str(var['ref'])
+            primary_variant = str(var['alts'][0])
+            print("Varinat: ", primary_variant)
+            span_variant = var['end'] - var['start']
+            start_offset = (var['start']-self.attributes['start'])
+            # Handle variants that overlap the start of the sequence
+            if start_offset < 0:
+                print("Negative start_offset caught: ", start_offset)
+                # Exclude the section of the reference that is outside of the gene
+                expected_ref = expected_ref[(-1*start_offset):]
+                primary_variant = primary_variant[(-1*start_offset):]
+                span_variant += start_offset
+                start_offset = 0
+
+            # Handle variants that overlap the end of the sequence
+            if start_offset + span_variant > len(self.sequence):
+                print("Variant off the gene")
+                span_variant -= var['end'] - self.attributes['end']
+                expected_ref = expected_ref[:span_variant]
+                primary_variant = primary_variant[:span_variant]
+
+            print("start_offset: %d, span_variant: %d" % (start_offset, span_variant))
+            print(''.join(self.mutated_sequence[(start_offset):(start_offset + span_variant)]), expected_ref, primary_variant, len(expected_ref) - len(primary_variant))
+            assert ''.join(self.mutated_sequence[(start_offset):(start_offset + span_variant)]) == expected_ref
+
+            # Double Check with accumulator
+            insertion = []
+            for index, position in enumerate(range(start_offset, start_offset + span_variant)):
+                print("Pos: ", index, position)
+                alternate_base = None
+                if index >= len(primary_variant):
+                    alternate_base = ''
+                elif index == span_variant and len(primary_variant) > span_variant:
+                    alternate_base = primary_variant[index:]
+                else:
+                    alternate_base = primary_variant[index]
+
+                # Label each site that was mutated with a $. 
+                if len(alternate_base) > 1:
+                    alternate_base = MUT_SYM + MUT_SYM.join(alternate_base.split())
+                else:
+                    alternate_base = MUT_SYM + alternate_base
+                insertion.append(alternate_base)
+                self.mutated_sequence[position] = alternate_base
+            print(self.mutated_sequence[start_offset:(start_offset+span_variant)], insertion)
+            assert insertion == self.mutated_sequence[start_offset:(start_offset+span_variant)]
+        # End of applying mutations 
+
+        # Merge the list back into a string, now each mutation position is preceded by $
+        self.mutated_sequence = ''.join(self.mutated_sequence)
+        while(True):
+            next_pos = self.mutated_sequence.find(MUT_SYM)
+            if next_pos == -1:
+                break
+            self.mutated_sequence = self.mutated_sequence[:next_pos] + self.mutated_sequence[next_pos+1:]
+            self.mutated_indices.append(next_pos)
+        print(self.mutated_indices)
 

@@ -8,7 +8,7 @@ from vcf.parser import _Filter
 from vcf.filters import Base as VCFFilterBase
 
 from pathovar.utils import defline_parser
-from pathovar.utils.fasta_utils import SequenceRecord
+from pathovar.utils.fasta_utils import SequenceRecord, MutatedSequenceRecord
 
 ## filter_vcf
 # Based on vcf_filter.py from PyVCF. Compatible with instantiated
@@ -131,7 +131,7 @@ def generate_html_report_json(vcf_path, annotation_dict):
                     json_dict[val.org_name]['entries'][entry.gid]['variants'] = variant_by_gene[gene]
     # Drop the keys, passing only a list of unique reference strain annotations
     json.dump(json_dict.values(), open(vcf_path[:-3] + 'json', 'w'))
-    return vcf_path[:-3] + 'json'
+    return vcf_path[:-3] + 'json', json_dict
 
 
 def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
@@ -153,7 +153,17 @@ def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
     fasta_handle.close()
     return fasta_name
 
+def generate_mutant_sequences(json_dict):
+    sequences = []
 
+    for variant_genes in json_dict:
+        for gene in variant_genes["entries"].values():
+                assert gene['nucleotide_sequence'] != ""
+                defline = 'gi|%(gid)s|ref|%(accession)s| %(title)s' % gene
+                seq_rec = MutatedSequenceRecord(defline, gene['nucleotide_sequence'], defline_parser, **gene)
+                print(seq_rec)
+                seq_rec.sweep_mutations()
+                sequences.append(seq_rec)
 
 
 ## VCF Filter Classes
