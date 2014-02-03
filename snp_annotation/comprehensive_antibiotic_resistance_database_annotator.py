@@ -10,35 +10,22 @@ from pathovar.utils.fasta_utils import FastaParser
 database_data = pathovar.get_external_databases_config()['comprehensive_antibiotic_resistance_database']
 
 # Get location of data files
-sequence_db_paths = glob.glob(os.path.join(pathovar.INSTALL_DIR, database_data['storage_path'] + '*.fa'))
+nucleotide_sequence_db_paths = glob.glob(os.path.join(pathovar.INSTALL_DIR, database_data['storage_path'] + 'nucleotide/*.fa'))
+protein_sequence_db_paths = glob.glob(os.path.join(pathovar.INSTALL_DIR, database_data['storage_path'] + 'protein/*.fa'))
 
 
-class CARDNucleotideBlastAnnotator(object):
+
+class CARDNucleotideBlastAnnotator(blast_driver.NucleotideDatabaseBlastAnnotatorBase):
 	def __init__(self, **opts):
-		self.opts = opts
-		self.verbose = opts.get('verbose', False)
-		self.blast_drivers = map(lambda dbf: blast_driver.BlastAnnotationDriver(dbf, blast_driver.NUCLEOTIDE), sequence_db_paths)
-		
+		blast_driver.NucleotideDatabaseBlastAnnotatorBase.__init__(self, nucleotide_sequence_db_paths, **opts)
 
-	@property
-	def processes(self):
-		return [b.process for b in self.blast_drivers]
-
-	def wait_for_results(self):
-		ret_codes =  [b.process.wait() for b in self.blast_drivers]
-		if sum(ret_codes) != 0:
-			raise blast_driver.BlastDriverException("A CARDNucleotideBlastAnnotator Blast job failed %r" % ret_codes)
-		result_files_dict = {self.blast_drivers[ind].db_name:blast_driver.BlastResultsXMLParser(outfile) for ind, outfile in enumerate(self.outfiles)}
-		return result_files_dict
-
-	@property
-	def outfiles(self):
-		return [b.outfile for b in self.blast_drivers]
-
-	def query_with_nucleotides(self, query, **opts):
-		for blaster in self.blast_drivers:
-			if self.verbose: print("Blasting against %s" % blaster.db_name)
-			proc = blaster.blast_with_nucleotides(query, **opts)
+class CARDProteinBlastAnnotator(blast_driver.ProteinDatabaseBlastAnnotatorBase):
+	def __init__(self, **opts):
+		blast_driver.ProteinDatabaseBlastAnnotatorBase.__init__(self, protein_sequence_db_paths, **opts)
 
 def defline_parser(defline):
 	pass
+
+if __name__ == '__main__':
+	CARDNucleotideBlastAnnotator()
+	CARDProteinBlastAnnotator()

@@ -46,6 +46,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         try:
             os.remove(*glob.glob('data/*.vcf*'))
             os.remove(*glob.glob('data/*.bam*'))
+            os.remove(*glob.glob('data/*.xml*'))
         except:
             pass
 
@@ -69,12 +70,14 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         vcf_utils.vcf_to_gene_report(anno_vcf)
         self.assertTrue(os.path.exists(global_args.sam_file[:-3] + 'anno.variant_report.tsv'), "Calls to vcf_utils.py did not produce an annotated variant report")
         global ref_fa
-        ref_fa = vcf_utils.generate_reference_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
+        ref_fa = vcf_utils.generate_reference_protein_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
         self.assertTrue(os.path.exists(ref_fa), "Calls to vcf_utils did not produce a reference fasta for sequences with variants")
     
     def test_step_3_external_database_search(self):
         self.assertTrue(os.path.exists(ref_fa), "Previous steps did not initialize reference fasta for sequences with variants")
-        card_annotator = CARD.CARDNucleotideBlastAnnotator()
+        card_annotator = CARD.CARDProteinBlastAnnotator()
+        card_annotator.query_with_proteins(ref_fa)
+        card_annotator.wait_for_results()
 
 
 if __name__ == '__main__':

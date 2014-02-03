@@ -134,7 +134,7 @@ def generate_html_report_json(vcf_path, annotation_dict):
     return vcf_path[:-3] + 'json', json_dict
 
 
-def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
+def generate_reference_protein_fasta_for_variants(vcf_path, annotation_dict):
     genes, variant_by_gene = get_variant_genes(vcf_path)
 
     sequences = []
@@ -142,9 +142,9 @@ def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
         for val in annotation_dict.values():
             if gene in val.entries:
                 entry = val.entries[gene]
-                assert entry.nucleotide_sequence != ""
+                assert entry.amino_acid_sequence[0] != ""
                 defline = 'gi|%(gid)s|ref|%(accession)s| %(title)s' % entry.__dict__
-                seq_rec = SequenceRecord(defline, entry.nucleotide_sequence, defline_parser)
+                seq_rec = SequenceRecord(defline, entry.amino_acid_sequence[0], defline_parser)
                 sequences.append(seq_rec)
     fasta_name = vcf_path[:-3] + "variant_refs.fa"
     fasta_handle = open(fasta_name, 'w')
@@ -153,7 +153,7 @@ def generate_reference_fasta_for_variants(vcf_path, annotation_dict):
     fasta_handle.close()
     return fasta_name
 
-def generate_mutant_sequences(json_dict):
+def generate_mutant_nucleotide_sequences(json_dict):
     sequences = []
 
     for org_name in json_dict:

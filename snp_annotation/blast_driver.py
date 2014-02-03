@@ -207,9 +207,13 @@ class BlastResultsHSP(object):
 		# Frames (Nucleotide Derived Only)
 		try:
 			self.query_frame = parser.find('hsp_query-frame').get_text()
+		except ValueError, e:
+			pass
+		try:
 			self.hit_frame = parser.find('hsp_hit-frame').get_text()
 		except ValueError, e:
 			pass
+
 		# Alignment
 		self.identity = parser.find("hsp_identity").get_text()
 		self.gaps = int(parser.find('hsp_gaps').get_text())

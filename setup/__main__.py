@@ -20,7 +20,7 @@ for database in databases:
     try:
         config_data = database_config_data[database]
         if config_data['setup_script'] != None:
-            subprocess.call('python %s %s %s' % (config_data['setup_script'], config_data['storage_path'], " ".join(config_data["data_urls"])), shell=True)
+            subprocess.call('python %s' % config_data['setup_script'], shell=True)
             config_data['enabled'] = True
             database_config_data[database] = config_data
         else:

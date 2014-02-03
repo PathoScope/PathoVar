@@ -8,12 +8,77 @@ import json
 __all__ = ['snp_caller', 'web', 'snp_annotation', 'tests', 'setup']
 
 def get_external_databases_config():
-    return json.load(open(os.path.dirname(__file__) + '/external_databases.json', 'r'))
+    try:
+        conf = json.load(open(os.path.dirname(__file__) + '/external_databases.json', 'r'))
+    except Exception, e:
+        print(e)
+        print("Writing Fresh external_databases.json config")
+        update_external_databases_config(DEFAULT_EXTERNAL_DATABASE_CONFIG)
+        conf = get_external_databases_config()
+    return conf
 
 def update_external_databases_config(config_dict):
-    json.dump(config_dict, open('/external_databases.json', 'w'))
+    json.dump(config_dict, open(os.path.dirname(__file__) + '/external_databases.json', 'w'))
 
 INSTALL_DIR = os.path.dirname(__file__)
+
+DEFAULT_EXTERNAL_DATABASE_CONFIG = {
+    "comprehensive_antibiotic_resistance_database": {
+        "data_urls" : {
+            "nucleotide" : [
+            "http://arpcard.mcmaster.ca/blast/db/nucleotide/AR-genes.fa.gz", 
+            "http://arpcard.mcmaster.ca/blast/db/nucleotide/AT-genes.fa.gz", 
+            "http://arpcard.mcmaster.ca/blast/db/nucleotide/ABS-genes.fa.gz"
+            ], 
+            "protein":[
+            "http://arpcard.mcmaster.ca/blast/db/protein/AR-polypeptides.fa.gz",
+            "http://arpcard.mcmaster.ca/blast/db/protein/AT-polypeptides.fa.gz", 
+            "http://arpcard.mcmaster.ca/blast/db/protein/ABS-polypeptides.fa.gz"
+            ],
+            "other":[
+                "http://arpcard.mcmaster.ca/obo-download/aro.obo"
+            ]},
+        "storage_path": "databases/comprehensive_antibiotic_resistance_database/",
+        "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
+        "appropriate_organisms": [
+            "*"
+        ],
+        "enabled": False
+    },
+    "patric": {
+        "data_urls": [
+            "ftp://ftp.patricbrc.org/patric2/genomes/"
+        ],
+        "storage_path": "databases/patric/",
+        "setup_script": None,
+        "appropriate_organisms": [
+            "bacteria"
+        ],
+        "enabled": False
+    },
+    "drugbank": {
+        "data_urls": {
+            "nucleotide": [
+                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_target.fasta.zip",
+                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_enzyme.fasta.zip",
+                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_transporter.fasta.zip",
+                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_carrier.fasta.zip"
+            ],
+            "protein":[
+                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_target.fasta.zip",
+                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_enzyme.fasta.zip",
+                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_transporter.fasta.zip",
+                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_carrier.fasta.zip"
+            ]
+        },
+        "storage_path": "databases/drugbank/",
+        "setup_script": "setup/drugbank_setup.py",
+        "appropriate_organisms": [
+            "*"
+        ],
+        "enabled": False
+    }
+}
 
 
 

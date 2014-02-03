@@ -65,11 +65,10 @@ def main(args):
 	filter_args.alt_depth = args.alt_depth
 	filter_args.min_depth = args.min_depth
 
-	if args.annotation_engine == "entrez":	
-		from snp_annotation import locate_variant
-		snp_annotation_driver = locate_variant.EntrezAnnotationMapper(variant_file, **dict(filter_args = filter_args, **opts))
-		snp_annotation_driver.annotate_all_snps()
-		anno_vcf = snp_annotation_driver.write_annotated_vcf()
+	from snp_annotation import locate_variant
+	snp_annotation_driver = locate_variant.EntrezAnnotationMapper(variant_file, **dict(filter_args = filter_args, **opts))
+	snp_annotation_driver.annotate_all_snps()
+	anno_vcf = snp_annotation_driver.write_annotated_vcf()
 
 	snp_annotated_time = time()
 	if args.verbose: print('SNP Annotation Done (%s sec)' % str(snp_annotated_time - snp_called_time))
@@ -77,7 +76,7 @@ def main(args):
 	from pathovar.utils import vcf_utils
 	if args.verbose: print("Generating Gene Report.")
 	vcf_utils.vcf_to_gene_report(anno_vcf)
-	ref_fa = vcf_utils.generate_reference_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
+	ref_fa = vcf_utils.generate_reference_protein_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
 
 	## Load internal configuration file
 	external_database_conf = pathovar.get_external_databases_config()
@@ -86,17 +85,17 @@ def main(args):
 	external_database_results = {}
 	# OPT-IN DATABASES
 	if "comprehensive_antibiotic_resistance_database" in enabled_databases:
-		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDNucleotideBlastAnnotator
-		card_blast = CARDNucleotideBlastAnnotator()
-		card_blast.query_with_nucleotides(ref_fa)
+		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDProteinBlastAnnotator
+		card_blast = CARDProteinBlastAnnotator()
+		card_blast.query_with_proteins(ref_fa)
 
 		# Block while annotations run
 		external_database_results["comprehensive_antibiotic_resistance_database"] = card_blast.wait_for_results()
 
 	if "drugbank" in enabled_databases:
-		from pathovar.snp_annotation.drugbank_annotator import DrugBankNucleotideBlastAnnotator
+		from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator
 		drugbank_blast = DrugBankNucleotideBlastAnnotator()
-		drugbank_blast.query_with_nucleotides(ref_fa)
+		drugbank_blast.query_with_proteins(ref_fa)
 
 		# Block while annotations run
 		external_database_results["drugbank"] = drugbank_blast.wait_for_results()
