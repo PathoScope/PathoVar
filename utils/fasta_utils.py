@@ -98,7 +98,7 @@ class FastQParser(FastaParser):
 
     def process_record(self, defline, sequence, qual):
         record = SequenceRecord(defline, sequence, self.defline_parse_func)
-        record.attributes['quality'] = qual
+        record.attributes['quality'] = re.sub(r'\n|\r', '', qual)
         self.sequences.append(record)
 
     def parse_file(self):
@@ -138,12 +138,12 @@ class FastQParser(FastaParser):
 
 class SequenceRecord(object):
     def __init__(self, defline, sequence, defline_parser_func, **attributes):
-        self.defline = defline
+        self.defline = re.sub(r'\n|\r', '', defline)
         defline_fields = defline_parser_func(defline)
         self.org_name = defline_fields.get('org_name','-')
         self.tax_id = defline_fields.get('tax_id','-')
         self.gene_id = defline_fields.get('gene_id', '-')
-        self.sequence = sequence
+        self.sequence = re.sub(r'\n|\r', '', sequence)
         self.attributes = dict(defline_fields, **attributes)
 
     def to_fasta_format(self):
@@ -153,12 +153,12 @@ class SequenceRecord(object):
 
     def to_fastq_format(self):
         entry = "@" + self.defline
-        entry += self.sequence
+        entry += self.sequence + '\n'
         entry += '+\n'
-        qual = self.attributes.get('quality', None)
+        qual = self.attributes.get('quality', None) + '\n'
         if qual == None:
-            qual = "!" * len(self.sequence)
-        entry += qual
+            qual = "!" * len(self.sequence) + '\n'
+        entry += qual 
         return entry
 
     def find_uncovered_regions(self):
@@ -185,17 +185,17 @@ class MutatedSequenceRecord(SequenceRecord):
         self.mutated_indices = []
 
     def sweep_mutations(self):
+        #print(self.defline)
+        #print(self.sequence)
         for var in self.attributes['variants']:
-            print("Sequence Start: ", self.attributes['start'])
-            print("Variant Start: ", var["start"])
             expected_ref = str(var['ref'])
             primary_variant = str(var['alts'][0])
-            print("Varinat: ", primary_variant)
             span_variant = var['end'] - var['start']
             start_offset = (var['start']-self.attributes['start'])
+            #print("Offset Start: ", start_offset)
             # Handle variants that overlap the start of the sequence
             if start_offset < 0:
-                print("Negative start_offset caught: ", start_offset)
+                #print("Overlap Start")
                 # Exclude the section of the reference that is outside of the gene
                 expected_ref = expected_ref[(-1*start_offset):]
                 primary_variant = primary_variant[(-1*start_offset):]
@@ -204,19 +204,18 @@ class MutatedSequenceRecord(SequenceRecord):
 
             # Handle variants that overlap the end of the sequence
             if start_offset + span_variant > len(self.sequence):
-                print("Variant off the gene")
+                #print("Overlap End")
                 span_variant -= var['end'] - self.attributes['end']
                 expected_ref = expected_ref[:span_variant]
                 primary_variant = primary_variant[:span_variant]
-
-            print("start_offset: %d, span_variant: %d" % (start_offset, span_variant))
-            print(''.join(self.mutated_sequence[(start_offset):(start_offset + span_variant)]), expected_ref, primary_variant, len(expected_ref) - len(primary_variant))
-            assert ''.join(self.mutated_sequence[(start_offset):(start_offset + span_variant)]) == expected_ref
+            #print("Verifying Mutant:", ''.join(self.mutated_sequence[(start_offset):(start_offset + span_variant)]), expected_ref)
+            #print('-'.join(self.mutated_sequence[(start_offset-5):(start_offset + span_variant+5)]))
+            if not  ''.join(self.mutated_sequence[(start_offset):(start_offset + span_variant)]) == expected_ref:
+                raise MutationException("Failed to verify matching reference nucleotides")
 
             # Double Check with accumulator
             insertion = []
             for index, position in enumerate(range(start_offset, start_offset + span_variant)):
-                print("Pos: ", index, position)
                 alternate_base = None
                 if index >= len(primary_variant):
                     alternate_base = ''
@@ -232,8 +231,8 @@ class MutatedSequenceRecord(SequenceRecord):
                     alternate_base = MUT_SYM + alternate_base
                 insertion.append(alternate_base)
                 self.mutated_sequence[position] = alternate_base
-            print(self.mutated_sequence[start_offset:(start_offset+span_variant)], insertion)
-            assert insertion == self.mutated_sequence[start_offset:(start_offset+span_variant)]
+            if not insertion == self.mutated_sequence[start_offset:(start_offset+span_variant)]:
+                raise MutationException("Failed to verify mutation transformation")
         # End of applying mutations 
 
         # Merge the list back into a string, now each mutation position is preceded by $
@@ -244,5 +243,7 @@ class MutatedSequenceRecord(SequenceRecord):
                 break
             self.mutated_sequence = self.mutated_sequence[:next_pos] + self.mutated_sequence[next_pos+1:]
             self.mutated_indices.append(next_pos)
-        print(self.mutated_indices)
+        
 
+class MutationException(Exception):
+    pass

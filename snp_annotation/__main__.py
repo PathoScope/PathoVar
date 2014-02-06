@@ -8,7 +8,7 @@ import vcf
 
 import pathovar
 from pathovar import utils
-from pathovar.snp_annotation import locate_variant
+from pathovar.snp_annotation import locate_variant, annotation_report
 
 argparser = argparse.ArgumentParser(prog = "snp_annotation")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -40,40 +40,52 @@ def main():
 
 	anno_vcf = annotation_mapper.write_annotated_vcf()
 
-	from pathovar.utils import vcf_utils
-	if args.verbose: print("Generating Gene Report.")
-	vcf_utils.vcf_to_gene_report(anno_vcf)
-	ref_fa = vcf_utils.generate_reference_protein_fasta_for_variants(anno_vcf, annotation_mapper.annotation_cache)
+	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_mapper.annotation_cache, **opts)
+	
+	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
+	mut_nucl_fa = annotation_report_driver.generate_mutant_nucleotide_sequences()
 
-	## Load internal configuration file
+	#from pathovar.utils import vcf_utils
+	#if args.verbose: print("Generating Gene Report.")
+	#vcf_utils.vcf_to_gene_report(anno_vcf)
+
+	# Load internal configuration file
 	external_database_conf = pathovar.get_external_databases_config()
 	enabled_databases = [database_name for database_name, database_conf in external_database_conf.items() if database_conf['enabled']]
 	external_database_results = {}
+	waiting_jobs = []
 	
-	# OPT-IN DATABASES
+	# Opt-In Databases Job Queue
 	if "comprehensive_antibiotic_resistance_database" in enabled_databases:
 		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDProteinBlastAnnotator
 		card_blast = CARDProteinBlastAnnotator()
-		card_blast.query_with_proteins(ref_fa)
+		card_blast.query_with_proteins(ref_prot_fa)
+		waiting_jobs.append(card_blast)
 
-		# Block while annotations run
-		external_database_results["comprehensive_antibiotic_resistance_database"] = card_blast.wait_for_results()
 
 	if "drugbank" in enabled_databases:
 		from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator
-		drugbank_blast = DrugBankNucleotideBlastAnnotator()
-		drugbank_blast.query_with_proteins(ref_fa)
+		drugbank_blast = DrugBankProteinBlastAnnotator()
+		drugbank_blast.query_with_proteins(ref_prot_fa)
+		waiting_jobs.append(drugbank_blast)
 
-		# Block while annotations run
-		external_database_results["drugbank"] = drugbank_blast.wait_for_results()
 
-	
-	json_file, json_data = vcf_utils.generate_html_report_json(anno_vcf, annotation_mapper.annotation_cache)
-	mutant_sequences = vcf_utils.generate_mutant_sequences(json_data)
+	# Block while annotations run
+	for job in waiting_jobs:
+		external_database_results[job.collection_name] = job.wait_for_results()
+
+	# Consume the completed Blast searches 
+	for external_database in external_database_results:
+		for category in external_database_results[external_database]:
+			annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
+
+	annotation_report_driver.to_json_file()
 
 	print("Annotation Complete (%r sec)" % (time() - timer))
 	if(args.test):
 		import IPython
 		IPython.embed()
+
+
 if __name__ == '__main__':
 	main()

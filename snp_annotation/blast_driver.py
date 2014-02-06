@@ -4,6 +4,7 @@
 import os
 import sys
 import subprocess
+from copy import copy
 
 from bs4 import BeautifulSoup
 
@@ -108,10 +109,13 @@ class BlastAnnotationDriver(object):
 
 
 class NucleotideDatabaseBlastAnnotatorBase(object):
-	def __init__(self, database_file_paths, **opts):
+	def __init__(self, database_file_paths, db_name_prefix = '', **opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
 		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, NUCLEOTIDE), database_file_paths)
+		self.collection_name = db_name_prefix
+		for driver in self.blast_drivers:
+			driver.db_name = db_name_prefix + '_' + driver.db_name
 
 	@property
 	def processes(self):
@@ -134,10 +138,13 @@ class NucleotideDatabaseBlastAnnotatorBase(object):
 			proc = blaster.blast_with_nucleotides(query, **opts)
 
 class ProteinDatabaseBlastAnnotatorBase(object):
-	def __init__(self, database_file_paths, **opts):
+	def __init__(self, database_file_paths, db_name_prefix = '', **opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
 		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, PROTEIN), database_file_paths)
+		self.collection_name = db_name_prefix
+		for driver in self.blast_drivers:
+			driver.db_name = db_name_prefix + '_' + driver.db_name
 
 	@property
 	def processes(self):
@@ -171,10 +178,15 @@ class BlastResultsXMLParser(object):
 
 class BlastResultsQuery(object):
 	def __init__(self, parser):
-		self.parser = parser
+		#self.parser = parser
 		self.query_def = parser.find("iteration_query-def").get_text()
 		self.__len__ = len(parser.find("iteration_query-len").get_text())
 		self.hits = sorted([BlastResultsHit(h) for h in parser.find_all("hit")], key=lambda x: x.e_value)
+
+	def to_json_safe_dict(self):
+		data_dict = copy(self.__dict__)
+		data_dict['hits'] = [h.to_json_safe_dict() for h in self.hits]
+		return data_dict
 
 	def __repr__(self):
 		rep = 'BlastResultQuery(%s Hits:%d)' % (self.query_def, len(self.hits))
@@ -182,11 +194,17 @@ class BlastResultsQuery(object):
 
 class BlastResultsHit(object):
 	def __init__(self, parser):
-		self.parser = parser
+		#self.parser = parser
 		self.hit_def = parser.find('hit_def').get_text()
 		self.__len__ = int(parser.find("hit_len").get_text())
 		self.hsps = [BlastResultsHSP(hsp) for hsp in parser.find_all("hsp")]
 		self.e_value = min(self.hsps, key = lambda x: x.e_value).e_value
+
+	def to_json_safe_dict(self):
+		data_dict = copy(self.__dict__)
+		data_dict['hsps'] = [hsp.to_json_safe_dict() for hsp in self.hsps]
+		return data_dict
+
 
 	def __repr__(self):
 		rep = "BlastResultHit(%s E Value:%0.000f HSPs:%d)" % (self.hit_def, self.e_value, len(self.hsps))
@@ -194,7 +212,7 @@ class BlastResultsHit(object):
 
 class BlastResultsHSP(object):
 	def __init__(self, parser):
-		self.parser = parser
+		#self.parser = parser
 		self.e_value = float(parser.find("hsp_evalue").get_text())
 		# Query range
 		self.query_from = int(parser.find("hsp_query-from").get_text())
@@ -221,6 +239,9 @@ class BlastResultsHSP(object):
 		self.qseq = parser.find("hsp_qseq").get_text()
 		self.hseq = parser.find("hsp_hseq").get_text()
 		self.midline = parser.find("hsp_midline").get_text()
+
+	def to_json_safe_dict(self):
+		return self.__dict__
 
 	def __repr__(self):
 		rep = "BlastResultsHSP(E Value:%0.000f)" % self.e_value

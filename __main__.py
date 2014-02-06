@@ -7,7 +7,6 @@ from collections import defaultdict
 import argparse
 
 import pathovar
-from pathovar import snp_caller
 from pathovar import utils
 
 argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100))
@@ -45,12 +44,11 @@ def main(args):
 	opts['no_cache'] = args.no_cache
 
 	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
-	
 	snp_caller_driver = None
 	start_clock = time()
 	if args.snp_caller == "samtools":
-		from snp_caller import samtools_snp_caller
-		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_binary_location, opts = opts)
+		from pathovar.snp_caller import samtools_snp_caller
+		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_binary_location, **opts)
 
 	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids)
 	consensus_sequences = variant_file + ".cns.fq"
@@ -65,40 +63,55 @@ def main(args):
 	filter_args.alt_depth = args.alt_depth
 	filter_args.min_depth = args.min_depth
 
-	from snp_annotation import locate_variant
+	from snp_annotation import locate_variant, annotation_report
 	snp_annotation_driver = locate_variant.EntrezAnnotationMapper(variant_file, **dict(filter_args = filter_args, **opts))
 	snp_annotation_driver.annotate_all_snps()
 	anno_vcf = snp_annotation_driver.write_annotated_vcf()
 
-	snp_annotated_time = time()
-	if args.verbose: print('SNP Annotation Done (%s sec)' % str(snp_annotated_time - snp_called_time))
+	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, snp_annotation_driver.annotation_cache, **opts)
+	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
+	mut_nucl_fa = annotation_report_driver.generate_mutant_nucleotide_sequences()
 
-	from pathovar.utils import vcf_utils
-	if args.verbose: print("Generating Gene Report.")
-	vcf_utils.vcf_to_gene_report(anno_vcf)
-	ref_fa = vcf_utils.generate_reference_protein_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
+	# from pathovar.utils import vcf_utils
+	# if args.verbose: print("Generating Gene Report.")
+	# vcf_utils.vcf_to_gene_report(anno_vcf)
+	# ref_prot_fa = vcf_utils.generate_reference_protein_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
 
 	## Load internal configuration file
 	external_database_conf = pathovar.get_external_databases_config()
 	enabled_databases = [database_name for database_name, database_conf in external_database_conf.items() if database_conf['enabled']]
-
 	external_database_results = {}
-	# OPT-IN DATABASES
+	waiting_jobs = []
+
+	# Opt-In Databases Job Queue
 	if "comprehensive_antibiotic_resistance_database" in enabled_databases:
 		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDProteinBlastAnnotator
 		card_blast = CARDProteinBlastAnnotator()
-		card_blast.query_with_proteins(ref_fa)
+		card_blast.query_with_proteins(ref_prot_fa)
+		waiting_jobs.append(card_blast)
 
-		# Block while annotations run
-		external_database_results["comprehensive_antibiotic_resistance_database"] = card_blast.wait_for_results()
 
 	if "drugbank" in enabled_databases:
 		from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator
-		drugbank_blast = DrugBankNucleotideBlastAnnotator()
-		drugbank_blast.query_with_proteins(ref_fa)
+		drugbank_blast = DrugBankProteinBlastAnnotator()
+		drugbank_blast.query_with_proteins(ref_prot_fa)
+		waiting_jobs.append(drugbank_blast)
 
-		# Block while annotations run
-		external_database_results["drugbank"] = drugbank_blast.wait_for_results()
+
+	# Block while annotations run
+	for job in waiting_jobs:
+		external_database_results[job.collection_name] = job.wait_for_results()
+
+	# Consume the completed Blast searches 
+	for external_database in external_database_results:
+		for category in external_database_results[external_database]:
+			annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
+
+	annotation_report_driver.to_json_file()
+
+
+	snp_annotated_time = time()
+	if args.verbose: print('SNP Annotation Done (%s sec)' % str(snp_annotated_time - snp_called_time))
 
 	if(args.test):
 		import IPython

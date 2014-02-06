@@ -15,8 +15,8 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
 ##Constructor
 # @param opts A defaultdict(bool) that carries configuration options
 # @param bin_dir The location of the `samtools` executable files
-    def __init__(self, opts, bin_dir = ''):
-        snp_caller_base.SNPCallerBase.__init__(self, opts, bin_dir)
+    def __init__(self, bin_dir = '', **opts):
+        snp_caller_base.SNPCallerBase.__init__(self, bin_dir, **opts)
         self.intermediary_files = []
 
 ## 
@@ -114,15 +114,37 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
             opts['mpileup-m'] = 3
             opts['mpileup-F'] = 0.0002
             opts['consensus-fq'] = ".cns.fq"
-            result = os.system('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -bvcg - > {intermediary}'.format(**opts))
+            
+            if self.verbose: print('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -bvcg - > {intermediary}'.format(**opts))
+
+            self.snp_call_process = subprocess.Popen('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -bvcg - > {intermediary}'.format(**opts), 
+                stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
+            
+            # Let this process run independently in the background
+            consensus_process = subprocess.Popen('{bin_dir}samtools mpileup -uf {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}{consensus-fq}'.format(**opts),
+                stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
+            
+            result = self.snp_call_process.wait()
+
+            #result = os.system('{bin_dir}samtools mpileup -uD -m {mpileup-m} -F {mpileup-F} -f {ref_genome} {bam_file} | {bin_dir}bcftools view -bvcg - > {intermediary}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during samtools mpileup | bcftools view for %s" % opts['bam_params'])
+
+            if self.verbose: print('{bin_dir}bcftools view {intermediary} | {bin_dir}vcfutils.pl varFilter -D{max_read_depth} > {final_vcf}'.format(**opts))
+            self.snp_call_process = subprocess.Popen('{bin_dir}bcftools view {intermediary} | {bin_dir}vcfutils.pl varFilter -D{max_read_depth} > {final_vcf}'.format(**opts),
+                stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
+
+            result = self.snp_call_process.wait()
             result = os.system('{bin_dir}bcftools view {intermediary} | {bin_dir}vcfutils.pl varFilter -D{max_read_depth} > {final_vcf}'.format(**opts))
             if result != 0:
                 raise snp_caller_base.SNPCallerException("An error occurred during bcftools view | vcfutils.pl varFilter for %s" % bam_file)
-            result = os.system('{bin_dir}samtools mpileup -uf {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}{consensus-fq}'.format(**opts))
-            if result != 0:
-                raise snp_caller_base.SNPCallerException("An error occurred during vcfutils.pl vcf2fq %s" % bam_file)
+            
+            if self.verbose: print('{bin_dir}samtools mpileup -uf {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}{consensus-fq}'.format(**opts))
+            #result = consensus_process.wait()
+            #result = os.system('{bin_dir}samtools mpileup -uf {ref_genome} {bam_file} | {bin_dir}bcftools view -cg - | vcfutils.pl vcf2fq > {final_vcf}{consensus-fq}'.format(**opts))
+            #if result != 0:
+            #    raise snp_caller_base.SNPCallerException("An error occurred during vcfutils.pl vcf2fq %s" % bam_file)
+
             vcf_files.append(opts["final_vcf"])
             self.intermediary_files.append(opts['intermediary'])
         return vcf_files

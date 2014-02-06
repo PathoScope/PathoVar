@@ -1,5 +1,5 @@
 import re
-from collection import defaultdict
+from collections import defaultdict
 
 from pathovar.utils import defline_parser
 
@@ -38,6 +38,8 @@ class SAMParser(object):
         if out != None:
             self.opts['out'] = out
         self.headers = []
+        self.reference_headers = {}
+        self.meta_headers = []
         self.reads = defaultdict(list)
         self.line = None
 
@@ -45,26 +47,44 @@ class SAMParser(object):
         with open(self.file_name, 'r') as handle:
             for line in handle:
                 self.line = line
-                if "@" in line:
+                if "@SQ" in line:
                     result = SAMHeader.parse(line)
                     self.headers.append(result)
+                    self.reference_headers[result.definition] = result
+                elif "@" in line[0]:
+                    result = SAMHeader.parse(line)
+                    self.meta_headers.append(result)
                 else: 
                     result = SAMRead.parse(line)
                     self.reads[result.rname].append(result)
 
     def alter_reference(self, target, replacement):
-        header = filter(lambda x: x.definition == target, self.headers)[0]
-        reads = self.reads[header.definition]
-        for read in reads:
-            read.rname = replacement
-        header.definition = replacement
-        self.headers[0].rest = ["SO:unsorted"]
+        new_headers = {}
+        for name, header in self.reference_headers.items():
+            if re.search(target, name):
+                header.definition = re.sub(target, replacement, name)
+                new_headers[re.sub(target, replacement, name)] = header
+            else:
+                new_headers[name] = header
+        new_reads = {}
+        for name, reads in self.reads.items():
+            if re.search(target, name):
+                for read in reads:
+                    read.rname = re.sub(target, replacement, name)
+                new_reads[re.sub(target, replacement, name)] = reads
+            else:
+                new_reads[name] = reads
+
+        self.meta_headers[0].rest = ["SO:unsorted"]
+        self.reference_headers = new_headers
+        self.reads = new_reads
 
     def remove_reference(self, target):
-        header = filter(lambda x: x.definition == target, self.headers)[0]
-        del self.reads[header.definition]
-        del header
-        self.headers[0].rest = ["SO:unsorted"]
+        new_headers = {name:header for name, header in self.reference_headers.items() if not re.search(target, name)}
+        new_reads = {name:reads for name, reads in self.reads.items() if not re.search(target,name)}
+        self.meta_headers[0].rest = ["SO:unsorted"]
+        self.reference_headers = new_headers
+        self.reads = new_reads
 
     def write_out(self):
         outfile = None
@@ -73,7 +93,10 @@ class SAMParser(object):
         else:
             outfile = self.file_name + '.filt.sam'
         with open(outfile, 'w') as handle:
-            for head_line in self.headers:
+            handle.write(str(self.meta_headers[0]) + "\n")
+            for head_line in self.reference_headers.values():
+                handle.write(str(head_line))
+            for head_line in self.meta_headers[1:]:
                 handle.write(str(head_line))
             for rname in self.reads:
                 for read in self.reads[rname]:
@@ -103,7 +126,7 @@ class SAMRead(object):
     @classmethod
     def parse(self, line):
         fields = line.split("\t")
-        aln =  (fields[12:])
+        aln =  (fields[11:])
         fields = fields[:11]
         fields.append(aln)
         result = SAMRead(*fields)

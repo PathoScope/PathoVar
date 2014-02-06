@@ -14,8 +14,8 @@ protein_sequence_db_paths = glob.glob(os.path.join(pathovar.INSTALL_DIR, databas
 
 class DrugBankNucleotideBlastAnnotator(blast_driver.NucleotideDatabaseBlastAnnotatorBase):
     def __init__(self, **opts):
-        blast_driver.NucleotideDatabaseBlastAnnotatorBase.__init__(self, nucleotide_sequence_db_paths, **opts)
+        blast_driver.NucleotideDatabaseBlastAnnotatorBase.__init__(self, nucleotide_sequence_db_paths, "drugbank", **opts)
 
 class DrugBankProteinBlastAnnotator(blast_driver.ProteinDatabaseBlastAnnotatorBase):
     def __init__(self, **opts):
-        blast_driver.ProteinDatabaseBlastAnnotatorBase.__init__(self, protein_sequence_db_paths, **opts)
+        blast_driver.ProteinDatabaseBlastAnnotatorBase.__init__(self, protein_sequence_db_paths, "drugbank", **opts)

@@ -8,7 +8,7 @@ import os
 import json
 from time import sleep, time
 from copy import copy
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 
 ## Third Party Library Imports
 import vcf 
@@ -28,7 +28,8 @@ def init_quality_filters(filter_args):
 	filters = [filt(filter_args) for filt in QUAL_FILTERS]
 	return filters
 
-DEV_ANNOTATION_SCHEMA_STORE = dict()
+CACHE_SCHEMA_VERSION = '0.3.3'
+FORCE_CACHE_REBUILD_ON_OBSOLETE = True
 
 ##
 #
@@ -57,6 +58,7 @@ class EntrezAnnotationMapper(object):
 
 		self.reader.infos['GENE'] = _Info('GENE', 1, "String", "Gene containing this variant")
 
+
 	##
 	#
 	def annotate_snp(self, variant):
@@ -66,12 +68,18 @@ class EntrezAnnotationMapper(object):
 		if "gene_id" in ids:
 			if 'gene_id-'+ids['gene_id'] not in self.annotation_cache:
 				cache_file = self.cache_dir + os.sep + 'gene_id-'+ids['gene_id'] + '.annot.json'
-				if self.verbose: print("Searching for cache file: %s" % cache_file)
+				
+				if self.verbose and not self.no_cache: print("Searching for cache file: %s" % cache_file)
 				if os.path.exists(cache_file) and not self.no_cache:
 					if self.verbose: print('Cache Hit')
 					try:
+						# If error occurs during deserialize, will throw ValueError Exception
 						json_dict = json.load(open(cache_file))
-						self.annotation_cache['gene_id-'+ids['gene_id']] = GenBankFeatureFile(json_dict, json=True, mol_type='nucl', **opt_args)
+						if "schema_version" not in json_dict or (json_dict['schema_version'] != CACHE_SCHEMA_VERSION and FORCE_CACHE_REBUILD_ON_OBSOLETE):
+							if self.verbose: print("Obsolete schema, must rebuild from source")
+							self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], xml=True, **opt_args)
+						else:
+							self.annotation_cache['gene_id-'+ids['gene_id']] = GenBankFeatureFile(json_dict, json=True, mol_type='nucl', **opt_args)
 					except ValueError, e: 
 						if self.verbose: print(e)
 						self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], xml=True, **opt_args)
@@ -79,7 +87,7 @@ class EntrezAnnotationMapper(object):
 				else:
 					if self.verbose and not self.no_cache: print('Cache Miss')
 					self.annotation_cache['gene_id-'+ids['gene_id']] = self.find_annotations_by_gene_id(ids['gene_id'], xml=True, **opt_args)
-			if self.verbose: print("Localizing variant at positon %r" % [variant.start, variant.end,])
+			#if self.verbose: print("Localizing variant at positon %r" % [variant.start, variant.end,])
 			annotations.extend(self.annotation_cache['gene_id-'+ids['gene_id']].locate_snp_site(variant))
 		return annotations
 
@@ -92,10 +100,13 @@ class EntrezAnnotationMapper(object):
 		nucleotide_annotations = self.find_nucleotide_annotations_by_gene_id(gene_id, **opts)
 		opts['mol_type'] = 'prot'
 		# The protein genpep file for the genome does not contain region annotations
-		protein_annotations = self.find_protein_annotations_by_gene_id(nucleotide_annotations.features[0].gid, **opts)
-		for gid, prot_entry in protein_annotations.entries.items():
-			for annot_name, annot in prot_entry.annotations.items():
-				nucleotide_annotations.entries[gid].annotations[annot_name].regions.extend(annot.regions)
+		if len(nucleotide_annotations.features) > 0:
+			protein_annotations = self.find_protein_annotations_by_gene_id(nucleotide_annotations.features[0].gid, **opts)
+			for gid, prot_entry in protein_annotations.entries.items():
+				for annot_name, annot in prot_entry.annotations.items():
+					nucleotide_annotations.entries[gid].annotations[annot_name].regions.extend(annot.regions)
+		else: 
+			if self.verbose: print("Failed to find features for %s, data may be missing" % gene_id)
 		return nucleotide_annotations
 
 	##
@@ -120,6 +131,7 @@ class EntrezAnnotationMapper(object):
 	##
 	#
 	def annotate_all_snps(self):
+		if self.verbose: print("Annotating All Variant Sites.")
 		for variant in self.variants:
 			annotations = self.annotate_snp(variant)
 			anno_variant = AnnotatedVariant(variant, annotations)
@@ -133,7 +145,7 @@ class EntrezAnnotationMapper(object):
 				open(self.cache_dir + os.sep + key + '.annot.json', 'w').write(json.dumps(cached_annotator.to_json_safe_dict()))
 
 	def write_annotated_vcf(self):
-		if self.verbose: print("Writing annotated .vcf file")
+		if self.verbose: print("Writing annotated .vcf file.")
 		output_file = self.vcf_file[:-4] + '.anno.vcf'
 		writer = vcf.Writer(open(output_file, 'w'), self.reader)
 		for variant in self.annotated_variants:
@@ -163,15 +175,25 @@ class AnnotatedVariant(vcf.model._Record):
 
 
 
+def to_text(tag):
+	return tag.get_text()
+
+def to_text_strip(tag):
+	return tag.get_text().strip()
+
+def to_int(tag):
+	return int(tag.get_text().strip())
+
 ## GenBankFeatureFile
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
 	def __init__(self, data, **opts):
 		self.opts = opts
-		self.verbose = opts['verbose']
+		self.verbose = opts.get('verbose', False)
 		self.mol_type = opts['mol_type']
 		timer = time()
+		self.gid = None
 		self.parser = None
 		self.chromosome = None
 		self.org_name = None
@@ -188,12 +210,28 @@ class GenBankFeatureFile(object):
 		self.parser = BeautifulSoup(xml)
 		if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
 		if self.verbose: print("Searching for Chromosome")
-		self.org_name = self.parser.find("orgname_name").get_text().replace('\n','')
+		self.org_name = self.parser.find("org-ref_taxname").get_text().replace('\n',' ')
 		self.genetic_code = int(self.parser.find("orgname_gcode").get_text())
-		self.chromosome = self.parser.find_all('iupacna')
-		if self.chromosome:
-			self.chromosome = ''.join(map(lambda x: x.get_text().strip(), self.chromosome))
-			if self.verbose: print("Found, %d bp" % len(self.chromosome))
+		self.gid = self.parser.find("seq-id_gi").get_text()
+		
+		if self.mol_type == 'nucl':
+			self.chromosome = self.parser.find_all('iupacna')
+			if self.chromosome:
+				self.chromosome = ''.join(map(to_text_strip, self.chromosome))
+				if self.verbose: print("Found, %d bp" % len(self.chromosome))
+			chromosome_len_parity = sum(map(to_int, self.parser.find_all('seq-literal_length')))
+
+			if len(self.chromosome) != chromosome_len_parity and chromosome_len_parity != 0:
+				if self.verbose: print("Chromosome Length Parity Error (%d != %d). Sequence Data Missing. Attempting to fix" % (len(self.chromosome), chromosome_len_parity))
+				eutils_handle = entrez_eutils.EntrezEUtilsDriver(**self.opts)
+				data = eutils_handle.find_nucleotides_by_gene_id(self.gid)
+				fasta_seq = (data.split('\n'))
+				replace_chromosome = ''.join(fasta_seq[1:])
+				if len(replace_chromosome) == chromosome_len_parity:
+					if self.verbose: print("Chromosome Length Parity Fixed")
+					self.chromosome = replace_chromosome
+				else:
+					raise GenBankFileChromosomeLengthMismatch("Could not resolve Chromosome Length Parity Error")
 
 		if self.verbose: print("Gathering Entries and Features")
 		self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self, xml = True), self.parser.find_all("seq-entry")) }
@@ -210,9 +248,9 @@ class GenBankFeatureFile(object):
 		
 		# Each feature occurs multiple times in the file, redundant with its multiple regions. The complete
 		# genomic span is the largest span. This works for single-span entities. 
+		
 		if self.verbose: print("Computing Genomic Coordinates")
 		feature_dict = {}
-		chromosome_len = len(self.chromosome)
 		for feat in self.features:
 			if feat.starts:
 				if feat.gid not in feature_dict:
@@ -220,8 +258,8 @@ class GenBankFeatureFile(object):
 				else:
 					if feat.end - feat.start > feature_dict[feat.gid].end - feature_dict[feat.gid].start:
 						feature_dict[feat.gid] = feat
-					if feat.end > chromosome_len:
-						print("%r exceeds chromosome size" % feat)
+					if self.mol_type == 'nucl' and feat.end > len(self.chromosome):
+						raise GenBankFileChromosomeLengthMismatch("%r exceeds chromosome size" % feat)
 		self.features = feature_dict.values()
 		
 		# Using the genomic position data just computed, update coordinate information for the 
@@ -230,17 +268,24 @@ class GenBankFeatureFile(object):
 			entry = self.entries[feat.gid]
 			entry.update_genome_position(feat)
 
+		# Remove whole-reference entry
+		self.entries.pop(self.gid)
+
+
 	def _from_json(self, json_dict):
-		if self.verbose: print("Starting to load from JSON")
 		timer = time()
+		self.gid = json_dict['gid']
 		self.org_name = json_dict['name']
 		self.genetic_code = json_dict.get('genetic_code', None)
 		self.entries = {k:GenBankSeqEntry(v, self, **self.opts) for k,v in json_dict['entries'].items()}
+
 		if self.verbose: print("Loading from JSON Complete (%rs)" % (time() - timer))
 
 
 	def to_json_safe_dict(self):
 		data_dict = {}
+		data_dict['gid'] = self.gid
+		data_dict['schema_version'] = CACHE_SCHEMA_VERSION
 		data_dict["name"] = self.org_name
 		data_dict['genetic_code'] = self.genetic_code
 		data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
@@ -254,7 +299,7 @@ class GenBankFeatureFile(object):
 			#if self.verbose: print("check %d >= %d and %d <= %d" % (snp_loc, entry.start, snp_loc, entry.end))
 			if (snp.start >= entry.start and snp.start <= entry.end) or (snp.end >= entry.end and snp.start <= entry.end) \
 			or (snp.start <= entry.start and snp.end >= entry.start):
-				if self.verbose: print("SNP Location %r mapped within %r" % ([snp.start, snp.end], entry))
+				#if self.verbose: print("SNP Location %r mapped within %r" % ([snp.start, snp.end], entry))
 				last_entry_ind += ind
 				yield entry
 
@@ -271,8 +316,8 @@ class GenBankFeature(object):
 		self.gid = element.find('seq-id_gi').get_text().strip()
 		# Some features, especially in complex organisms, will have multi-part features. 
 		# Capture all of that data
-		self.starts = map(lambda x: int(x.get_text().strip()), self.element.find_all('seq-interval_from'))
-		self.ends = map(lambda x: int(x.get_text().strip()), self.element.find_all('seq-interval_to'))
+		self.starts = map(to_int, self.element.find_all('seq-interval_from'))
+		self.ends = map(to_int, self.element.find_all('seq-interval_to'))
 
 		# and set the extrema to the global start and stop
 		self.start = None
@@ -312,7 +357,12 @@ class GenBankSeqEntry(object):
 		self.ends   = None
 		self.start  = None
 		self.end	= None
+		
 		self.strand = None
+		
+		self.is_partial = None
+		self.is_pseudo = None
+
 		self.amino_acid_sequence = None
 		# Prune later once starts and ends are set
 		self.nucleotide_sequence = None 
@@ -341,13 +391,25 @@ class GenBankSeqEntry(object):
 		if self.strand:
 			self.strand = self.strand.attrs['value']
 
-		self.amino_acid_sequence = map(lambda x: x.get_text(), parser.find_all('iupacaa'))
+		self.is_partial = self.parser.find("seq-feat_partial")
+		if self.is_partial: 
+			self.is_partial = self.is_partial.attrs['value']
+		else:
+			self.is_partial = False
+
+		self.is_pseudo = self.parser.find("seq-feat_pseudo")
+		if self.is_pseudo: 
+			self.is_pseudo = self.is_pseudo.attrs['value']
+		else:
+			self.is_pseudo = False
+
+		self.amino_acid_sequence = map(to_text, parser.find_all('iupacaa'))
 		# Prune later once starts and ends are set
 		self.nucleotide_sequence = self.owner.chromosome
 
 		self.title = parser.find('seqdesc_title').get_text().strip()
 		self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True), parser.find_all("bioseq_annot"))}
-		self.comments = map(lambda x: x.get_text().strip(), parser.find_all('seq-feat_comment'))
+		self.comments = map(to_text_strip, parser.find_all('seq-feat_comment'))
 		
 		#self._id = parser.find_all('bioseq_id')
 		#self._desc = parser.find_all("bioseq_descr")
@@ -371,6 +433,9 @@ class GenBankSeqEntry(object):
 		self.starts = json_dict["starts"]
 		self.ends =  json_dict["ends"]
 		
+		self.is_partial = json_dict.get('is_partial', False)
+		self.is_pseudo = json_dict.get('is_pseudo', False)
+
 		self.annotations = {k:GenBankAnnotation(v, json=True) for k,v in json_dict['annotations'].items()}
 
 	def update_genome_position(self, feature):
@@ -388,9 +453,9 @@ class GenBankSeqEntry(object):
 	def to_info_field(self):
 		rep = "(gi:%(gid)s|title:%(title)s|acc:%(accession)s|strand:%(strand)s" % self.__dict__
 		annos = map(lambda x: x.to_info_field(), self.annotations.values())
-		rep += '||Annotations|' + '|'.join(annos)
-		rep += '||Comments|' + '|'.join(self.comments)
-		if re.search(r'resistance', rep):
+		rep_annos = '||Annotations|' + '|'.join(annos)
+		rep_comments = '||Comments|' + '|'.join(self.comments)
+		if re.search(r'resistance', rep + rep_annos + rep_comments):
 			rep += '||RESISTANCE'
 		rep += ')'
 		rep = re.sub(r'\s', '_', rep)
@@ -446,13 +511,12 @@ class GenBankAnnotation(object):
 		self.end = map(lambda x: int(x.get_text().replace(' ','')), data.find_all("seq-interval_to"))
 		
 		self.regions = [] #list(map(lambda x: x.get_text().strip(), data.find_all("seqfeatdata_region")))
-		self.name = ', '.join(map(lambda x: x.get_text().strip(), data.find_all("prot-ref_name_e")))
+		self.name = ', '.join(map(to_text_strip, data.find_all("prot-ref_name_e")))
 		raw_extensions = data.find_all("seq-feat_ext")
 		for raw_ext in raw_extensions:
 			obj_type = str(raw_ext.find("object-id_str").get_text().strip())
-			obj_data = map(lambda x: x.get_text().strip(), raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
+			obj_data = map(to_text_strip, raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
 			ext = AnnotationExtension()
-			DEV_ANNOTATION_SCHEMA_STORE[obj_type] = raw_ext
 			ext = self.process_extension(raw_ext)
 			ext['ext_type'] = obj_type
 			self.regions.append(ext)
@@ -468,7 +532,7 @@ class GenBankAnnotation(object):
 		return rep
 
 	def process_extension(self, raw_ext):
-		labels = map(lambda x: x.get_text().strip(), raw_ext.find_all("user-field_label"))
+		labels = map(to_text_strip, raw_ext.find_all("user-field_label"))
 		data = raw_ext.find_all("user-field_data")
 		values = []
 		for datum in data:
@@ -483,6 +547,7 @@ class GenBankAnnotation(object):
 			ext[labels[i]] = values[i]
 
 		return ext
+
 
 	def to_info_field(self):
 		rep = '(starts:%(start)s|ends:%(end)s|' % self.__dict__
@@ -504,5 +569,15 @@ class GenBankAnnotation(object):
 		rep += ')'
 		return rep
 
+
 class UnknownAnnotationException(Exception):
 	pass
+class GenBankFileChromosomeLengthMismatch(Exception):
+	pass
+
+if __name__ == '__main__':
+	import sys
+	gbf = GenBankFeatureFile(''.join(open(sys.argv[1]).readlines()), mol_type='nucl', verbose=True, xml=True)
+	import IPython
+	print("File loaded in variable `gbf`")
+	IPython.embed()
