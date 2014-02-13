@@ -116,7 +116,33 @@ def vcf_to_gene_report(vcf_path):
         report.write(line + '\n')
     report.close()
 
+def filter_diff_variant_sites(reference_variants, target_variants, site_intersection = False):
+    by_reference = defaultdict(dict)
+    for variant in target:
+        by_reference[variant.CHROM][(variant.start, variant.end,)] = True
+    for variant in reference_vcf:
+        if by_reference[variant.CHROM][(variant.start, variant.end,)]:
+            if not site_intersection:
+                by_reference[variant.CHROM][(variant.start, variant.end,)] = False
+    
+
+
+
+
 ## VCF Filter Classes
+class FilterByComparisonVCF(VCFFilterBase):
+    '''Filter a VCF File by comparing its sites to another VCF File and operating on the intersection/difference'''
+    name = 'ref-vcf-filter'
+
+    @classmethod
+    def customize_parser(self, parser):
+        parser.add_argument('--reference-vcf', type=str, help="The VCF file against which to compare")
+        parser.add_argument('--intersection', type=bool, default=False, help="Instead of excluding intersecting sites, keep them and drop sites not found in both files.")
+
+    def __init__(self, args):
+        self.reference_variants = [var for var in vcf.Reader(open(args.reference_vcf))]
+        self.intersection = args.intersection
+
 class FilterByChromMatch(VCFFilterBase):
     '''Filter a VCF File by regular expresion match over its CHROM column'''
     name = "regmatch"

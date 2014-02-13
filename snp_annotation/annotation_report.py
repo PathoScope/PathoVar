@@ -14,7 +14,8 @@ class AnnotationReport(object):
         self.data = dict()
         self.annotation_dict = annotation_dict
         self.genes, self.variant_by_gene = vcf_utils.get_variant_genes(self.vcf_path)
-        self.variant_by_gene =  {gene:[{"start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT)} 
+        self.variant_by_gene =  {gene:[{"start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
+        "var_type": var.var_type} 
             for var in self.variant_by_gene[gene]] for gene in self.variant_by_gene}
         self.get_annotations_from_entrez_mapping()
 
@@ -128,6 +129,12 @@ class AnnotationReport(object):
             if not 'blast_hits' in query_entry:
                 query_entry['blast_hits'] = dict()
             query_entry['blast_hits'][db_name] = blast_results.queries[query].to_json_safe_dict()['hits']
+
+    def write_text_report(self):
+        handle = open(self.vcf_path[:-3] + 'report.tsv', 'w')
+        for org_name, org_data in self.data.items():
+            for entry_gid, entry_data in org_data['entries'].items():
+                report_line = ""
 
 
 

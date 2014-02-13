@@ -28,7 +28,7 @@ def init_quality_filters(filter_args):
 	filters = [filt(filter_args) for filt in QUAL_FILTERS]
 	return filters
 
-CACHE_SCHEMA_VERSION = '0.3.3'
+CACHE_SCHEMA_VERSION = '0.3.4'
 FORCE_CACHE_REBUILD_ON_OBSOLETE = True
 
 ##
@@ -104,7 +104,12 @@ class EntrezAnnotationMapper(object):
 			protein_annotations = self.find_protein_annotations_by_gene_id(nucleotide_annotations.features[0].gid, **opts)
 			for gid, prot_entry in protein_annotations.entries.items():
 				for annot_name, annot in prot_entry.annotations.items():
-					nucleotide_annotations.entries[gid].annotations[annot_name].regions.extend(annot.regions)
+					if annot_name in nucleotide_annotations.entries[gid].annotations:
+						nucleotide_annotations.entries[gid].annotations[annot_name].add_regions(annot.regions)
+						if nucleotide_annotations.entries[gid].annotations[annot_name].comments != (annot.comments):
+							nucleotide_annotations.entries[gid].annotations[annot_name].comments += (annot.comments)
+					else: 
+						nucleotide_annotations.entries[gid].annotations[annot_name] = annot
 		else: 
 			if self.verbose: print("Failed to find features for %s, data may be missing" % gene_id)
 		return nucleotide_annotations
@@ -390,6 +395,9 @@ class GenBankSeqEntry(object):
 		self.strand = self.parser.find('na-strand')
 		if self.strand:
 			self.strand = self.strand.attrs['value']
+			assert self.strand != ''
+		else:
+			self.strand = "?"
 
 		self.is_partial = self.parser.find("seq-feat_partial")
 		if self.is_partial: 
@@ -408,7 +416,7 @@ class GenBankSeqEntry(object):
 		self.nucleotide_sequence = self.owner.chromosome
 
 		self.title = parser.find('seqdesc_title').get_text().strip()
-		self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True), parser.find_all("bioseq_annot"))}
+		self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.find_all("seq-annot"))}
 		self.comments = map(to_text_strip, parser.find_all('seq-feat_comment'))
 		
 		#self._id = parser.find_all('bioseq_id')
@@ -480,6 +488,22 @@ class AnnotationExtension(OrderedDict):
 	def __init__(self,*args, **kwargs):
 		OrderedDict.__init__(self, *args, **kwargs)
 
+	def __eq__(self, other_dict):
+		for k in self.keys():
+			if self[k] != other_dict[k]: return False
+		print(self)
+		print(other_dict)
+		raw_input("Next")
+		return True
+
+	def __cmp__(self, other_dict):
+		for k in self.keys():
+			if self[k] != other_dict[k]: return False
+		print(self)
+		print(other_dict)
+		raw_input("Next")
+		return True
+
 	def __repr__(self):
 		rep = ''
 		ext_type = self.get("ext_type", 'anno_ext')
@@ -496,9 +520,11 @@ class AnnotationExtension(OrderedDict):
 
 class GenBankAnnotation(object):
 	def __init__(self, data, **opts):
+		self.id = None
 		self.start = []
 		self.end = []
 		self.name = None
+		self.comments = []
 		self.regions = []
 
 		if 'xml' in opts:
@@ -507,11 +533,15 @@ class GenBankAnnotation(object):
 			self._from_json(data)
 
 	def _parse_xml(self, data):
+		self.id = map(to_text_strip, data.find_all("seq-feat_dbxref"))
 		self.start = map(lambda x: int(x.get_text().replace(' ','')), data.find_all("seq-interval_from"))
 		self.end = map(lambda x: int(x.get_text().replace(' ','')), data.find_all("seq-interval_to"))
 		
-		self.regions = [] #list(map(lambda x: x.get_text().strip(), data.find_all("seqfeatdata_region")))
-		self.name = ', '.join(map(to_text_strip, data.find_all("prot-ref_name_e")))
+		self.regions = []#list(map(lambda x: x.get_text().strip(), data.find_all("seqfeatdata_region")))
+		self.name = ', '.join(map(to_text_strip, data.find_all("gene-ref") + data.find_all("prot-ref_name_e")))
+		self.comments = (map(to_text_strip, data.find_all("seq-feat_comment")))
+		if self.name == '':
+			self.name = self.comments[0]
 		raw_extensions = data.find_all("seq-feat_ext")
 		for raw_ext in raw_extensions:
 			obj_type = str(raw_ext.find("object-id_str").get_text().strip())
@@ -522,13 +552,15 @@ class GenBankAnnotation(object):
 			self.regions.append(ext)
 
 	def _from_json(self, json_dict):
+		self.id = json_dict['id']
 		self.start = json_dict['start']
 		self.end = json_dict['end']
 		self.name = json_dict['name']
 		self.regions = json_dict['regions']
+		self.comments = json_dict['comments']
 
 	def __repr__(self):
-		rep = "GenBankAnnotation(Starts=%(start)s, Ends=%(end)s, name:%(name)s, regions:%(regions)s)" % self.__dict__
+		rep = "GenBankAnnotation(%(id)s|Starts=%(start)s, Ends=%(end)s, name:%(name)s, regions:%(regions)s)" % self.__dict__
 		return rep
 
 	def process_extension(self, raw_ext):
@@ -548,6 +580,10 @@ class GenBankAnnotation(object):
 
 		return ext
 
+	def add_regions(self, other_regions):
+		for other_region in other_regions:
+			if all([region != other_region for region in self.regions]):
+				self.regions.append(other_region)
 
 	def to_info_field(self):
 		rep = '(starts:%(start)s|ends:%(end)s|' % self.__dict__
