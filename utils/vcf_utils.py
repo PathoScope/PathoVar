@@ -7,8 +7,23 @@ import vcf
 from vcf.parser import _Filter
 from vcf.filters import Base as VCFFilterBase
 
-from pathovar.utils import defline_parser
-from pathovar.utils.fasta_utils import SequenceRecord, MutatedSequenceRecord
+class AnnotatedVariant(vcf.model._Record):
+    def __init__(self, _record, annotations = None):
+        if annotations == None:
+            annotations = []
+        vcf.model._Record.__init__(self, _record.CHROM, _record.POS, _record.ID, _record.REF,
+         _record.ALT, _record.QUAL, _record.FILTER, _record.INFO, _record.FORMAT, 
+         _record._sample_indexes, _record.samples)
+        self.INFO['GENE'] = [x.to_info_field() for x in annotations]
+        self.annotations = annotations
+
+    def __repr__(self):
+        rep = "Record(CHROM=%(CHROM)s, POS=%(POS)s, REF=%(REF)s, ALT=%(ALT)s), ANNO=%(annotations)s" % self.__dict__
+        return rep
+
+    def __str__(self):
+        rep = "Record(CHROM=%(CHROM)s, POS=%(POS)s, REF=%(REF)s, ALT=%(ALT)s), ANNO=%(annotations)s" % self.__dict__
+        return rep
 
 ## filter_vcf
 # Based on vcf_filter.py from PyVCF. Compatible with instantiated

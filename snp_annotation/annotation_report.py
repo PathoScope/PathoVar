@@ -7,12 +7,13 @@ from pathovar.utils import vcf_utils, defline_parser
 from pathovar.utils.fasta_utils import SequenceRecord, MutatedSequenceRecord, MutationException
 
 class AnnotationReport(object):
-    def __init__(self, vcf_path, annotation_dict, **opts):
+    def __init__(self, vcf_path, annotation_manager, **opts):
         self.vcf_path = vcf_path
         self.opts = opts
         self.verbose = opts.get('verbose', False)
+        self.annotation_manager = annotation_manager
         self.data = dict()
-        self.annotation_dict = annotation_dict
+        self.annotation_dict = annotation_manager.genome_annotations
         self.genes, self.variant_by_gene = vcf_utils.get_variant_genes(self.vcf_path)
         self.variant_by_gene =  {gene:[{"start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
         "var_type": var.var_type} 
@@ -57,23 +58,28 @@ class AnnotationReport(object):
                         self.data[val.org_name]['entries'][entry.gid] = entry.to_json_safe_dict()
                         self.data[val.org_name]['entries'][entry.gid]['variants'] = self.variant_by_gene[gene]
 
-    ## TODO: Migrate to using self.data dictionary
+
+    def get_entrez_gene_annotations(self):
+        if self.verbose: print("Getting Genbank Gene Comment Annotations")
+        for gene in self.genes:
+            gene_comments = self.annotation_manager.get_gene_comments(gene)
+            self[gene]['gene_comments'] = gene_comments.to_json_safe_dict()
+
+
     def generate_reference_protein_fasta_for_variants(self):
         if self.verbose: print("Generating Reference Protein Sequences.")
         sequences = []
-        for gene in self.genes:
-            for val in self.annotation_dict.values():
-                if gene in val.entries:
-                    entry = val.entries[gene]
-                    if entry.is_partial or entry.is_pseudo: 
-                        continue
-                    if len(entry.amino_acid_sequence) == 0:
-                        if self.verbose: print(str(entry) + " Protein Sequence Missing")
-                        continue
-                    assert entry.amino_acid_sequence[0] != ""
-                    defline = 'gi|%(gid)s|ref|%(accession)s| %(title)s' % entry.__dict__
-                    seq_rec = SequenceRecord(defline, entry.amino_acid_sequence[0], defline_parser)
-                    sequences.append(seq_rec)
+        for org_name in self.data:
+            for gene in self.data[org_name]["entries"]:
+                entry = self.data[org_name]["entries"][gene]
+                if entry['is_partial'] or entry['is_pseudo']:
+                    continue
+                if len(entry['amino_acid_sequence']) == 0:
+                    if self.verbose: print(str(entry['gid']) + " Protein Sequence Missing")
+                    continue
+                defline = 'gi|%(gid)s|ref|%(accession)s| %(title)s' % entry
+                seq_rec = SequenceRecord(defline, entry['amino_acid_sequence'][0], defline_parser)
+                sequences.append(seq_rec)
         fasta_name = self.vcf_path[:-3] + "variant_ref_protein.fa"
         fasta_handle = open(fasta_name, 'w')
         for seq in sequences:

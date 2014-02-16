@@ -56,26 +56,29 @@ def main(args):
 	snp_called_time = time()
 	if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
 
-	snp_annotation_driver = None
+	variant_locator_driver = None
 	anno_vcf = None
 
 	filter_args = utils.Namespace()
 	filter_args.alt_depth = args.alt_depth
 	filter_args.min_depth = args.min_depth
 
-	from snp_annotation import locate_variant, annotation_report
-	snp_annotation_driver = locate_variant.EntrezAnnotationMapper(variant_file, **dict(filter_args = filter_args, **opts))
-	snp_annotation_driver.annotate_all_snps()
-	anno_vcf = snp_annotation_driver.write_annotated_vcf()
+	from pathovar.snp_annotation import locate_variant, annotation_report
+	from pathovar.web import annotation_manager
 
-	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, snp_annotation_driver.annotation_cache, **opts)
+	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
+
+	variant_locator_driver = locate_variant.VariantLocator(variant_file, 
+		**dict(filter_args = filter_args, annotation_manager = annotation_manager_driver, **opts))
+
+	variant_locator_driver.annotate_all_snps()
+	anno_vcf = variant_locator_driver.write_annotated_vcf()
+
+	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, 
+		annotation_manager_driver, **opts)
+
 	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
 	mut_nucl_fa = annotation_report_driver.generate_mutant_nucleotide_sequences()
-
-	# from pathovar.utils import vcf_utils
-	# if args.verbose: print("Generating Gene Report.")
-	# vcf_utils.vcf_to_gene_report(anno_vcf)
-	# ref_prot_fa = vcf_utils.generate_reference_protein_fasta_for_variants(anno_vcf, snp_annotation_driver.annotation_cache)
 
 	## Load internal configuration file
 	external_database_conf = pathovar.get_external_databases_config()
@@ -89,7 +92,6 @@ def main(args):
 		card_blast = CARDProteinBlastAnnotator()
 		card_blast.query_with_proteins(ref_prot_fa)
 		waiting_jobs.append(card_blast)
-
 
 	if "drugbank" in enabled_databases:
 		from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator

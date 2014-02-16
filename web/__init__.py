@@ -1,5 +1,7 @@
 __all__ = ['entrez_eutils']
 
+from time import sleep
+
 # External Dependencies
 import requests
 

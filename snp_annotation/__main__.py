@@ -9,6 +9,7 @@ import vcf
 import pathovar
 from pathovar import utils
 from pathovar.snp_annotation import locate_variant, annotation_report
+from pathovar.web import annotation_manager
 
 argparser = argparse.ArgumentParser(prog = "snp_annotation")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -21,7 +22,7 @@ argparser.add_argument('--alt-depth', type=float, default=0.4, help="The MAF thr
 
 def main():
 	args = argparser.parse_args()
-	if args.verbose: print(args)
+	#if args.verbose: print(args)
 	opts = dict()
 	opts['verbose'] = args.verbose
 	opts['cache_dir'] = args.cache_dir
@@ -35,13 +36,15 @@ def main():
 
 	if not os.path.exists(args.vcf_file): raise IOError("Input .vcf File Not Found")
 	timer = time()
-	annotation_mapper = locate_variant.EntrezAnnotationMapper(args.vcf_file, **opts)
-	annotation_mapper.annotate_all_snps()
+	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
+	variant_locator = locate_variant.VariantLocator(args.vcf_file, annotation_manager = annotation_manager_driver, **opts)
+	variant_locator.annotate_all_snps()
 
-	anno_vcf = annotation_mapper.write_annotated_vcf()
+	anno_vcf = variant_locator.write_annotated_vcf()
 
-	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_mapper.annotation_cache, **opts)
-	
+	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)
+
+
 	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
 	mut_nucl_fa = annotation_report_driver.generate_mutant_nucleotide_sequences()
 
@@ -69,6 +72,7 @@ def main():
 		drugbank_blast.query_with_proteins(ref_prot_fa)
 		waiting_jobs.append(drugbank_blast)
 
+	annotation_report_driver.get_entrez_gene_annotations()
 
 	# Block while annotations run
 	for job in waiting_jobs:

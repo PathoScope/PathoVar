@@ -32,17 +32,21 @@ genome_by_org_name = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?
 
 # Set remote environment for translating from genome to nucleotides
 link_from_genome_to_nuccore = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=genome&db=nuccore&id={id}&cmd=neighbor_history'
+link_from_protein_to_gene =   "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=protein&db=gene&id={id}&cmd=neighbor_history"
 
 # Retrieve all matching nucleotide sequences
 get_nucleotides_from_link = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&' \
                             'query_key={query_key}&WebEnv={web_env}&rettype={form}&retmode={mode}'
+
+get_gene_from_link = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=gene&rettype={form}&query_key={query_key}&WebEnv={web_env}"
+
 # Retrieve a particular sequence record by gene id
 get_nucleotides_by_gene_id = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id={gene_id}&rettype={form}&retmode={mode}'
 
 # Retrieve a particular sequence record by gene id
 get_protein_by_gene_id = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id={gene_id}&rettype={form}&retmode={mode}'
 
-get_gene_by_gene_id = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=gene&id={gene_id}&rettype={form}"
+
 
 ## EntrezEUtilsDriver
 # Defines all of the logic for interacting with Entrez's EUtils web service, handling errors, 
@@ -121,27 +125,22 @@ class EntrezEUtilsDriver(object):
         gene_id = str(gene_id)
         timer = time()
         if self.verbose: print("Fetching %s from Entrez" % gene_id)
-        get_gene_response = get_robust(get_gene_by_gene_id.format(**dict(gene_id=gene_id, form=form)))
+        get_link_from_protein_to_gene_response = get_robust(link_from_protein_to_gene.format(**dict(id=gene_id)))
         if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
-        get_gene_response.raise_for_status()
-        if self.verbose:
-            open(gene_id+".gene." + form, 'w').write(get_gene_response.text)
-        return get_gene_response.text
-
-
-def get_robust(url, count = 0, **kwargs):
-    response = requests.get(url, **kwargs)
-    try:
-        response.raise_for_status()
-    except Exception, e:        
-        if count < 5:
-            print("Error occured during HTTP Request (Error: %s), retry %d" % (e.text, count))
-            sleep(10)
-            return get_robust(url, count + 1, **kwargs)
-        else:
-            raise EntrezEUtilsDriverException(e.text)
-    return response
-
+        get_link_from_protein_to_gene_response.raise_for_status()
+        query_key = None
+        web_env = None
+        get_link_from_protein_to_gene_response_xml = BeautifulSoup(get_link_from_protein_to_gene_response.text)
+        try:
+            query_key = get_link_from_protein_to_gene_response_xml.find('querykey').get_text()
+            web_env = get_link_from_protein_to_gene_response_xml.find('webenv').get_text()
+        except:
+            if(self.verbose): print(get_link_from_protein_to_gene_response_xml)
+            raise EntrezEUtilsDriverException("Query Key and/or Web Env Missing")
+        get_gene_from_link_response = get_robust(get_gene_from_link.format(**dict(id=gene_id, form=form, query_key=query_key, 
+            web_env=web_env)))
+        get_gene_from_link_response.raise_for_status()
+        return get_gene_from_link_response.text
 
 
 ## EntrezEUtilsDriverException

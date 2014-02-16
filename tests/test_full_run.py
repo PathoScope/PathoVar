@@ -6,6 +6,7 @@ import pathovar
 from pathovar.__main__ import main
 from pathovar.web import entrez_eutils
 from pathovar.snp_caller import samtools_snp_caller
+from pathovar.web import annotation_manager
 from pathovar.snp_annotation import locate_variant, comprehensive_antibiotic_resistance_database_annotator as CARD, annotation_report
 
 from pathovar import utils
@@ -63,12 +64,17 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         filter_args = utils.Namespace()
         filter_args.alt_depth = global_args.alt_depth
         filter_args.min_depth = global_args.min_depth
-        snp_annotation_driver = locate_variant.EntrezAnnotationMapper(global_args.sam_file[:-3] + 'vcf', **dict(filter_args = filter_args, **global_args.__dict__))
+
+        annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**global_args.__dict__)
+
+        snp_annotation_driver = locate_variant.VariantLocator(global_args.sam_file[:-3] + 'vcf', 
+            annotation_manager = annotation_manager_driver,
+            **dict(filter_args = filter_args, **global_args.__dict__))
         snp_annotation_driver.annotate_all_snps()
         anno_vcf = snp_annotation_driver.write_annotated_vcf()
         self.assertTrue(os.path.exists(global_args.sam_file[:-3] + 'anno.vcf'), "Calls locate_variant.py did not produce an annotated VCF File")
         global annotation_reporter
-        annotation_reporter = annotation_report.AnnotationReport(anno_vcf, snp_annotation_driver.annotation_cache)
+        annotation_reporter = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver)
         annotation_reporter.generate_mutant_nucleotide_sequences()
         global ref_fa
         ref_fa = annotation_reporter.generate_reference_protein_fasta_for_variants()
