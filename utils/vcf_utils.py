@@ -2,6 +2,7 @@ import re
 import os
 import json
 from collections import defaultdict
+
 # 3rd Party Imports
 import vcf
 from vcf.parser import _Filter
@@ -141,9 +142,6 @@ def filter_diff_variant_sites(reference_variants, target_variants, site_intersec
                 by_reference[variant.CHROM][(variant.start, variant.end,)] = False
     
 
-
-
-
 ## VCF Filter Classes
 class FilterByComparisonVCF(VCFFilterBase):
     '''Filter a VCF File by comparing its sites to another VCF File and operating on the intersection/difference'''
@@ -155,8 +153,22 @@ class FilterByComparisonVCF(VCFFilterBase):
         parser.add_argument('--intersection', type=bool, default=False, help="Instead of excluding intersecting sites, keep them and drop sites not found in both files.")
 
     def __init__(self, args):
+        self.reference_vcf = args.reference_vcf
         self.reference_variants = [var for var in vcf.Reader(open(args.reference_vcf))]
         self.intersection = args.intersection
+        self.reference_dict = defaultdict(lambda : defaultdict(bool))
+        for var in self.reference_variants:
+            self.reference_dict[var.CHROM][(var.start,var.end,)] = True
+
+    def __call__(self, record):
+        res = self.reference_dict[record.CHROM][(record.start,record.end,)]
+        if self.intersection and res:
+            return record
+        elif not res:
+            return record
+
+    def filter_name(self):
+        return self.name + '-' + self.reference_vcf
 
 class FilterByChromMatch(VCFFilterBase):
     '''Filter a VCF File by regular expresion match over its CHROM column'''

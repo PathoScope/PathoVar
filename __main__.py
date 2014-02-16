@@ -99,6 +99,7 @@ def main(args):
 		drugbank_blast.query_with_proteins(ref_prot_fa)
 		waiting_jobs.append(drugbank_blast)
 
+	annotation_report_driver.get_entrez_gene_annotations()
 
 	# Block while annotations run
 	for job in waiting_jobs:
@@ -110,7 +111,6 @@ def main(args):
 			annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
 
 	annotation_report_driver.to_json_file()
-
 
 	snp_annotated_time = time()
 	if args.verbose: print('SNP Annotation Done (%s sec)' % str(snp_annotated_time - snp_called_time))
