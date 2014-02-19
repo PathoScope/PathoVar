@@ -2,19 +2,18 @@ import re
 import json
 from time import sleep, time
 from copy import copy
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 from bs4 import BeautifulSoup
 
 from pathovar.utils.fasta_utils import SequenceRecord
 from pathovar.web.ncbi_xml import to_text, to_text_strip, to_int, to_attr_value
 
-CACHE_SCHEMA_VERSION = '0.3.4'
-
 ## GenBankFeatureFile
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
+    CACHE_SCHEMA_VERSION = '0.3.5b'
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
@@ -112,7 +111,7 @@ class GenBankFeatureFile(object):
     def to_json_safe_dict(self):
         data_dict = {}
         data_dict['gid'] = self.gid
-        data_dict['schema_version'] = CACHE_SCHEMA_VERSION
+        data_dict['schema_version'] = GenBankFeatureFile.CACHE_SCHEMA_VERSION
         data_dict["name"] = self.org_name
         data_dict['genetic_code'] = self.genetic_code
         data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
@@ -238,7 +237,9 @@ class GenBankSeqEntry(object):
         self.nucleotide_sequence = self.owner.chromosome
 
         self.title = parser.find('seqdesc_title').get_text().strip()
-        self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.find_all("seq-annot"))}
+        #self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.find_all("seq-annot"))}
+        self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.find_all("seq-feat"))}
+
         self.comments = map(to_text_strip, parser.find_all('seq-feat_comment'))
         
         #self._id = parser.find_all('bioseq_id')
@@ -348,7 +349,6 @@ class GenBankAnnotation(object):
         self.name = None
         self.comments = []
         self.regions = []
-
         if 'xml' in opts:
             self._parse_xml(data)
         elif 'json' in opts:
@@ -432,3 +432,11 @@ class UnknownAnnotationException(Exception):
     pass
 class GenBankFileChromosomeLengthMismatch(Exception):
     pass
+
+if __name__ == '__main__':
+    import sys, IPython
+    file_name = sys.argv[1]
+    data = ''.join(open(file_name).readlines())
+    gbf = GenBankFeatureFile(data, xml = True, verbose = True, mol_type = "nucl")
+    print("Featre File stored in local variable `gbf`")
+    IPython.embed()

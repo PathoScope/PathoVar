@@ -22,7 +22,6 @@ from bs4 import BeautifulSoup
 from pathovar.web import get_robust
 
 ## URL CONSTANTS
-taxonomy_summary_url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=taxonomy&id={tid}'
 taxonomy_detail_url = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=taxonomy&id={tid}'
 # Organism name to Taxonomy ID: 
 org_name_to_taxonomy_id = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=taxonomy&term={org_name}[organism]"
@@ -31,9 +30,9 @@ org_name_to_taxonomy_id = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.
 genome_by_org_name = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=genome&term={org_name}[organism]'
 
 # Set remote environment for translating from genome to nucleotides
-link_from_genome_to_nuccore = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=genome&db=nuccore&id={id}&cmd=neighbor_history'
-link_from_protein_to_gene =   "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=protein&db=gene&id={id}&cmd=neighbor_history"
-
+link_from_genome_to_nuccore =   'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=genome&db=nuccore&id={id}&cmd=neighbor_history'
+link_from_protein_to_gene =     "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=protein&db=gene&id={id}&cmd=neighbor_history"
+link_from_protein_to_biosystem = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?&db=biosystems&dbfrom=protein&id={id}"
 # Retrieve all matching nucleotide sequences
 get_nucleotides_from_link = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&' \
                             'query_key={query_key}&WebEnv={web_env}&rettype={form}&retmode={mode}'
@@ -46,8 +45,7 @@ get_nucleotides_by_gene_id = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetc
 # Retrieve a particular sequence record by gene id
 get_protein_by_gene_id = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id={gene_id}&rettype={form}&retmode={mode}'
 
-
-
+get_biosystem_by_bsid = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=biosystems&id={bsid}"
 ## EntrezEUtilsDriver
 # Defines all of the logic for interacting with Entrez's EUtils web service, handling errors, 
 # and performing multi-request actions.
@@ -142,6 +140,23 @@ class EntrezEUtilsDriver(object):
         get_gene_from_link_response.raise_for_status()
         return get_gene_from_link_response.text
 
+    def find_biosystem_ids_by_gene_id(self, gene_id):
+        gene_id = str(gene_id)
+        timer = time()
+        #if self.verbose: print("Fetching %s's BioSystems from Entrez" % gene_id)
+        link_from_protein_to_biosystem_response = get_robust(link_from_protein_to_biosystem.format(**dict(id=gene_id)))
+        link_from_protein_to_biosystem_response.raise_for_status()
+        link_set = BeautifulSoup(link_from_protein_to_biosystem_response.text)
+        link_set_ids = set([link.get_text() for link in link_set.find_all("id") if link.get_text() != gene_id])
+        return link_set_ids
+
+    def find_biosystem_by_bsid(self, bsid):
+        bsid = str(bsid)
+        timer = time()
+        if self.verbose: print("Fetching %s from Entrez" % bsid)
+        get_biosystem_by_bsid_response = get_robust(get_biosystem_by_bsid.format(**dict(bsid=bsid)))
+        get_biosystem_by_bsid_response.raise_for_status()
+        return get_biosystem_by_bsid_response.text
 
 ## EntrezEUtilsDriverException
 # Parent class for capturing all EUtils generated exceptions. Exception class 

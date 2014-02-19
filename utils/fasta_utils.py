@@ -1,7 +1,6 @@
 import re
 from pathovar.utils import defline_parser
 
-
 ## 
 # Parse a Fasta format file and provide basic filtering
 # utilities to keep sequences that meet a certain criteria
@@ -215,10 +214,12 @@ class MutatedSequenceRecord(SequenceRecord):
 
             # Double Check with accumulator
             insertion = []
+            #print(start_offset, start_offset + span_variant)
             for index, position in enumerate(range(start_offset, start_offset + span_variant)):
                 alternate_base = None
                 if index >= len(primary_variant):
-                    alternate_base = ''
+                    #alternate_base = ''
+                    continue
                 elif index == span_variant and len(primary_variant) > span_variant:
                     alternate_base = primary_variant[index:]
                 else:
@@ -230,6 +231,7 @@ class MutatedSequenceRecord(SequenceRecord):
                 else:
                     alternate_base = MUT_SYM + alternate_base
                 insertion.append(alternate_base)
+                #print("alternate bases: ", alternate_base)
                 self.mutated_sequence[position] = alternate_base
             if not insertion == self.mutated_sequence[start_offset:(start_offset+span_variant)]:
                 raise MutationException("Failed to verify mutation transformation")
@@ -237,13 +239,14 @@ class MutatedSequenceRecord(SequenceRecord):
 
         # Merge the list back into a string, now each mutation position is preceded by $
         self.mutated_sequence = ''.join(self.mutated_sequence)
+        count = 0
         while(True):
             next_pos = self.mutated_sequence.find(MUT_SYM)
             if next_pos == -1:
                 break
+            #print("Mutant at", next_pos, self.mutated_sequence[next_pos+1])
             self.mutated_sequence = self.mutated_sequence[:next_pos] + self.mutated_sequence[next_pos+1:]
             self.mutated_indices.append(next_pos)
-        
 
 class MutationException(Exception):
     pass

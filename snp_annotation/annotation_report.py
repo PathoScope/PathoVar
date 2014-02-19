@@ -65,6 +65,12 @@ class AnnotationReport(object):
             gene_comments = self.annotation_manager.get_gene_comments(gene)
             self[gene]['gene_comments'] = gene_comments.to_json_safe_dict()
 
+    def get_entrez_biosystem_pathways(self):
+        if self.verbose: print("Getting Genbank BioSystem Pathway Annotations")
+        for gene in self.genes:
+            biosystems = self.annotation_manager.get_biosystems(gene)
+            self[gene]['biosystems'] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
+
 
     def generate_reference_protein_fasta_for_variants(self):
         if self.verbose: print("Generating Reference Protein Sequences.")
@@ -87,6 +93,10 @@ class AnnotationReport(object):
         fasta_handle.close()
         return fasta_name
 
+
+    ## TODO
+    ## Mutation transformation validation fails on sequences with indels, and indices are unreliable
+    ## so it is not included in the pipeline
     def generate_mutant_nucleotide_sequences(self):
         if self.verbose: print("Generating Mutant Nucleotide Sequences.")
         sequences = []
@@ -111,7 +121,7 @@ class AnnotationReport(object):
                         sequences.append(seq_rec)
                     except MutationException, e:
                         seq_rec.defline += "_" + org_name
-                        errs[org_name].append(seq_rec)
+                        errs[org_name].append((seq_rec, e,))
                         if self.verbose: print(seq_rec, e)
                             
         fasta_name = self.vcf_path[:-3] + "variant_mutant_nucleotides.fa"
@@ -124,8 +134,7 @@ class AnnotationReport(object):
             with open(self.vcf_path[:-3] + "err", 'w') as err_log:
                 for org_err in errs.values():
                     for seq_err in org_err:
-                        
-                        err_log.write(str(seq_err) + '\n')
+                        err_log.write(','.join(map(str, seq_err)) + '\n')
         return fasta_name
 
     def consume_blast_results(self,db_name,blast_results):

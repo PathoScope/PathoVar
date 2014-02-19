@@ -78,7 +78,6 @@ def main(args):
 		annotation_manager_driver, **opts)
 
 	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
-	mut_nucl_fa = annotation_report_driver.generate_mutant_nucleotide_sequences()
 
 	## Load internal configuration file
 	external_database_conf = pathovar.get_external_databases_config()

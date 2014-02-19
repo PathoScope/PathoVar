@@ -46,7 +46,6 @@ def main():
 
 
 	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
-	mut_nucl_fa = annotation_report_driver.generate_mutant_nucleotide_sequences()
 
 	#from pathovar.utils import vcf_utils
 	#if args.verbose: print("Generating Gene Report.")
@@ -73,6 +72,7 @@ def main():
 		waiting_jobs.append(drugbank_blast)
 
 	annotation_report_driver.get_entrez_gene_annotations()
+	annotation_report_driver.get_entrez_biosystem_pathways()
 
 	# Block while annotations run
 	for job in waiting_jobs:

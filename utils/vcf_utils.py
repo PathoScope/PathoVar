@@ -1,5 +1,5 @@
-import re
 import os
+import re
 import json
 from collections import defaultdict
 
@@ -30,7 +30,9 @@ class AnnotatedVariant(vcf.model._Record):
 # Based on vcf_filter.py from PyVCF. Compatible with instantiated
 # PyVCF _Filter objects.
 # @param keep If True, keep sequences that pass a filter, else exclude sequences that pass the filter
-def filter_vcf(file_path, filters, keep = True, short_circuit = False):
+def filter_vcf(file_path, filters, keep = True, short_circuit = False, output_file = None):
+    if output_file is None:
+        output_file = file_path + '.filt.vcf'
     inp = vcf.Reader(open(file_path, 'r'))
 
     # build filter chain
@@ -43,7 +45,7 @@ def filter_vcf(file_path, filters, keep = True, short_circuit = False):
         inp.filters[filter_obj.filter_name()] = _Filter(filter_obj.filter_name(), short_doc)
 
     # output must be created after all the filter records have been added
-    output = vcf.Writer(open(file_path + '.filt.vcf', 'w'), inp)
+    output = vcf.Writer(open(output_file, 'w'), inp)
 
     # apply filters
     for record in inp:
@@ -55,8 +57,8 @@ def filter_vcf(file_path, filters, keep = True, short_circuit = False):
             
             output_record.append(bool(result))
             record.add_filter(filt.filter_name())
-
         output_record = all(output_record) and len(output_record) > 0
+        #print(record, output_record)
         if not keep:
             output_record = not output_record
         if output_record:
@@ -145,16 +147,19 @@ def filter_diff_variant_sites(reference_variants, target_variants, site_intersec
 ## VCF Filter Classes
 class FilterByComparisonVCF(VCFFilterBase):
     '''Filter a VCF File by comparing its sites to another VCF File and operating on the intersection/difference'''
-    name = 'ref-vcf-filter'
+    name = 'ref-vcf'
 
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('--reference-vcf', type=str, help="The VCF file against which to compare")
+        parser.add_argument('-r', '--ref-vcfs', type=str, nargs="+", help="A VCF file against which to compare (may specify more than once)")
         parser.add_argument('--intersection', type=bool, default=False, help="Instead of excluding intersecting sites, keep them and drop sites not found in both files.")
 
     def __init__(self, args):
-        self.reference_vcf = args.reference_vcf
-        self.reference_variants = [var for var in vcf.Reader(open(args.reference_vcf))]
+        self.reference_vcfs = args.ref_vcfs
+        print(self.reference_vcfs)
+        self.reference_variants =[]
+        for ref_vcf in self.reference_vcfs:
+            self.reference_variants += [var for var in vcf.Reader(open(ref_vcf))]
         self.intersection = args.intersection
         self.reference_dict = defaultdict(lambda : defaultdict(bool))
         for var in self.reference_variants:
@@ -168,8 +173,8 @@ class FilterByComparisonVCF(VCFFilterBase):
             return record
 
     def filter_name(self):
-        return self.name + '-' + self.reference_vcf
-
+        mode = "-inters-" if self.intersection else "-diff-"
+        return self.name + mode + '-'.join(self.reference_vcfs)
 class FilterByChromMatch(VCFFilterBase):
     '''Filter a VCF File by regular expresion match over its CHROM column'''
     name = "regmatch"
@@ -257,5 +262,31 @@ class FilterByReadDepth(VCFFilterBase):
     def __call__(self, record):
         if record.INFO['DP'] >= self.min_depth:
             return record
+
+
+EXPOSED_FILTERS = [FilterByComparisonVCF,FilterByAltCallDepth,FilterByReadDepth,]
+def main():
+    import argparse
+    arg_parser = argparse.ArgumentParser(prog='filter-vcf')
+    for filter_type in EXPOSED_FILTERS:
+        filter_type.customize_parser(arg_parser)
+    arg_parser.add_argument('target_vcf_file', help="Target VCF to filter")
+    arg_parser.add_argument('-o', dest='output_file', default=None, help="The name of the output file. Defaults to the input file name + '.filt.vcf'")
+    args = arg_parser.parse_args()
+    print(args)
+    filters = []
+    for filter_type in EXPOSED_FILTERS:
+        try:
+            filt = filter_type(args)
+            filters.append(filt)
+        except Exception, e:
+            pass
+            # print("Filter Failed", filter_type, e)
+            # Ignore failing to build a filter, since it means that the filter 
+            # was not initialized properly, and it should not be used in that case.
+    filter_vcf(args.target_vcf_file, filters, output_file = args.output_file)
+
+if __name__ == '__main__':
+    main()
 
 #END            
