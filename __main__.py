@@ -99,6 +99,7 @@ def main(args):
 		waiting_jobs.append(drugbank_blast)
 
 	annotation_report_driver.get_entrez_gene_annotations()
+	annotation_report_driver.get_biosystem_pathways()
 
 	# Block while annotations run
 	for job in waiting_jobs:
