@@ -17,6 +17,7 @@ class Namespace:
 gene_id = re.compile(r'gi\|([^\|]+)\|')
 ##
 genbank_id = re.compile(r'gb\|([^\|]+)\|')
+ref_id     = re.compile(r'ref\|([^\|]+)\|')
 ##
 tax_id = re.compile(r'ti\|([^\|]+)\|')
 ##
@@ -35,6 +36,9 @@ def defline_parser(line):
     gene_id_matches = gene_id.findall(line)
     if len(gene_id_matches) > 0:
         result['gene_id'] = gene_id_matches[0]
+    ref_id_matches = ref_id.findall(line)
+    if len(ref_id_matches) > 0:
+        result['ref_id'] = ref_id_matches[0]
     genbank_id_matches = genbank_id.findall(line)
     if len(genbank_id_matches) > 0:
         result['genbank_id'] = genbank_id_matches[0]

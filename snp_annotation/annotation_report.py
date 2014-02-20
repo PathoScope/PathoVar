@@ -15,9 +15,13 @@ class AnnotationReport(object):
         self.data = dict()
         self.annotation_dict = annotation_manager.genome_annotations
         self.genes, self.variant_by_gene = vcf_utils.get_variant_genes(self.vcf_path)
-        self.variant_by_gene =  {gene:[{"start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
-        "var_type": var.var_type} 
-            for var in self.variant_by_gene[gene]] for gene in self.variant_by_gene}
+        self.variant_by_gene =  {gene:[
+        {
+            "start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
+        "_var_type": var.var_type, 
+        "var_type": 
+        ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) else "deletion"))} 
+            for var in self.variant_by_gene[gene]] for gene in self.variant_by_gene }
         self.get_annotations_from_entrez_mapping()
 
     # Abstraction that hides the fact we are dealing with multiple organisms
