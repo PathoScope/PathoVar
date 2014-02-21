@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import requests
 import subprocess
@@ -72,3 +73,6 @@ class SetupManager(object):
     def run(self, *args, **kwargs):
         self.setup_dirs(*args, **kwargs)
         self.download_files(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        shutil.rmtree(os.path.join(INSTALL_DIR, self.storage_path))
