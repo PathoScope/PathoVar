@@ -21,15 +21,15 @@ class SamtoolsSNPCaller(snp_caller_base.SNPCallerBase):
 
 ## 
 #
-    def get_reference_genome(self, source, tax_ids_reg = None, org_names_reg = None, gene_ids_reg = None, **kwargs):
-        return snp_caller_base.SNPCallerBase.get_reference_genome(self, source, tax_ids_reg = tax_ids_reg, org_names_reg = org_names_reg, gene_ids_reg = gene_ids_reg, **kwargs)
+    def get_reference_genome(self, source, **kwargs):
+        return snp_caller_base.SNPCallerBase.get_reference_genome(self, source, **kwargs)
 
 ## 
 # @param self The object reference
 # @param output_sam_file The path to the target .sam file
 # @param source The path to the reference genome of all of the organisms of interest
-    def call_snps(self, output_sam_file,source , tax_ids_reg = None, org_names_reg = None, gene_ids_reg = None,  **kwargs):
-        genome_path = self.get_reference_genome(source, tax_ids_reg = tax_ids_reg, org_names_reg = org_names_reg, gene_ids_reg = gene_ids_reg)
+    def call_snps(self, output_sam_file, source,  **kwargs):
+        genome_path = self.get_reference_genome(source, **kwargs)
         indexed_reference_genome = self._index_reference_genome(genome_path)
         bam_file = self._sam_to_bam(genome_path, *[output_sam_file])
         sorted_bam_files = self._sort_bam(*bam_file)

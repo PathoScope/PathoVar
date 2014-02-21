@@ -32,6 +32,8 @@ global_args.reference_genomes = "data/rsv.fa"
 
 global_args.min_depth = 5
 global_args.alt_depth = 0.4
+global_args.keep_all = True
+
 
 annotation_reporter = None
 ref_fa = None
@@ -56,7 +58,9 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
     def test_step_1_call_snps(self):
         print("\nCalling SNPs")
         snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = global_args.snp_caller_binary_location, **global_args.__dict__)
-        snp_caller_driver.call_snps(global_args.sam_file, source = global_args.reference_genomes, org_names_reg = global_args.org_names, tax_ids_reg = global_args.tax_ids, gene_ids_reg = global_args.gene_ids)
+        snp_caller_driver.call_snps(global_args.sam_file, source = global_args.reference_genomes, 
+            org_names_reg = global_args.org_names, tax_ids_reg = global_args.tax_ids, 
+            gene_ids_reg = global_args.gene_ids, keep_all = global_args.keep_all)
         self.assertTrue(os.path.exists(global_args.sam_file[:-3] + 'vcf'), "Calls to samtools|bcftools did not produce a VCF File")
         
     def test_step_2_annotate_snps(self):

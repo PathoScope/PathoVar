@@ -31,15 +31,14 @@ to a third party SNP Calling program.
 
 ## get_reference_genome
 # Retrieves and indexes the appropriate reference genome.
-# @param source string reference to reference genome location
-# @param tax_ids list of integer NCBI taxonomy ids
-# @param gene_ids list of integer NCBI gene ids
-# @param org_name string regular expression matching one or more organism names
-# @param kwargs kwargs
 # @return string path to indexed reference genome file 
     @abc.abstractmethod
-    def get_reference_genome(self,source, tax_ids_reg = None, org_names_reg = None, gene_ids_reg = None, **kwargs):
-        if tax_ids_reg or org_names_reg or gene_ids_reg:
+    def get_reference_genome(self,source, **kwargs):
+        tax_ids_reg = kwargs.get("tax_ids_reg", None)
+        org_names_reg = kwargs.get("org_names_reg", None) 
+        gene_ids_reg = kwargs.get("gene_ids_reg", None) 
+        keep_all = kwargs.get("keep_all", None) 
+        if tax_ids_reg or org_names_reg or gene_ids_reg or not keep_all:
             parser = fasta_utils.FastaParser(source)
             parser.parse_file()
             if tax_ids_reg:
@@ -49,7 +48,13 @@ to a third party SNP Calling program.
             if gene_ids_reg:
                 parser.filter_by_gene_ids(gene_ids_reg)
 
+            if not keep_all:
+                print(len(parser.sequences))
+                parser.filter_by_defline(r"(complete genome)|(plasmid.*(?!encoded).*complete sequence)")
+                print(len(parser.sequences))
+
             filtered_source = parser.write_output()
+            print(filtered_source)
             if os.path.getsize(filtered_source) == 0:
                 raise SNPCallerException("Filtered Reference Genome File contains no genomes! Double check your filtering constraints")
             return filtered_source
@@ -65,7 +70,7 @@ to a third party SNP Calling program.
 # @param kwargs kwargs
 # @return string path to .vcf or .bcf file
     @abc.abstractmethod
-    def call_snps(self, output_sam_file, source, tax_ids_reg = None, org_names_reg = None, gene_ids_reg = None, **kwargs):
+    def call_snps(self, output_sam_file, source, **kwargs):
         raise NotImplementedError()
 
 class SNPCallerException(Exception):

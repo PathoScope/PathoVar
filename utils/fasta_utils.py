@@ -76,7 +76,7 @@ class FastaParser(object):
     def filter_by_defline(self, defline_regex):
         keepers = [record for record in self.sequences if re.search(defline_regex, record.defline)]
         self.sequences = keepers
-        self.outfile_path += '.defline_' + re.sub(r'[/\\:*?"<>|{}]', '_', defline_regex)
+        self.outfile_path += '.defline_' + re.sub(r'[/\\:*?"<>|{}\s\(\)\!]', '_', defline_regex)
 
     ## 
     # Writes the remaining sequences to file in Fasta Format
