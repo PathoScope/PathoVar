@@ -20,7 +20,7 @@ target_args.add_argument('-r',"--reference-genomes", metavar = "REF", action = "
 target_args.add_argument("--org-names", metavar = "ORG-REGEX", action="store", help = "A valid regular expression that matches organism names associated with reference genomes.[optional]")
 target_args.add_argument("--tax-ids", metavar = "TI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Taxonomy ID numbers for each genome to call against.[optional]")
 target_args.add_argument("--gene-ids", metavar = "GI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Gene ID numbers for each genome to call against.[optional]")
-
+target_args.add_argument("--keep-all-sequences", action="store_true", default=False, help = "Do NOT discard any sequence in the database that is NOT a complete genome or complete plasmid sequence [optional]")
 
 snp_caller_args = argparser.add_argument_group("SNP Caller Options")
 snp_caller_args.add_argument('-s','--snp-caller', action="store", default = "samtools", choices = ["samtools"], help="Select the SNP Calling Program.[default:samtools]")
@@ -43,6 +43,8 @@ def main(args):
 	opts['cache_dir'] = args.cache_dir
 	opts['no_cache'] = args.no_cache
 
+	print(args)
+
 	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
 	snp_caller_driver = None
 	start_clock = time()
@@ -50,7 +52,9 @@ def main(args):
 		from pathovar.snp_caller import samtools_snp_caller
 		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_binary_location, **opts)
 
-	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids)
+	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, 
+		org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
+		keep_all = args.keep_all_sequences)
 	consensus_sequences = variant_file + ".cns.fq"
 
 	snp_called_time = time()

@@ -7,6 +7,7 @@ from collections import OrderedDict, defaultdict
 from bs4 import BeautifulSoup
 
 from pathovar.utils.fasta_utils import SequenceRecord
+from pathovar.web import entrez_eutils
 from pathovar.web.ncbi_xml import to_text, to_text_strip, to_int, to_attr_value
 
 ## GenBankFeatureFile

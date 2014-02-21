@@ -49,12 +49,9 @@ to a third party SNP Calling program.
                 parser.filter_by_gene_ids(gene_ids_reg)
 
             if not keep_all:
-                print(len(parser.sequences))
                 parser.filter_by_defline(r"(complete genome)|(plasmid.*(?!encoded).*complete sequence)")
-                print(len(parser.sequences))
 
             filtered_source = parser.write_output()
-            print(filtered_source)
             if os.path.getsize(filtered_source) == 0:
                 raise SNPCallerException("Filtered Reference Genome File contains no genomes! Double check your filtering constraints")
             return filtered_source

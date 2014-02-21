@@ -134,14 +134,9 @@ def vcf_to_gene_report(vcf_path):
         report.write(line + '\n')
     report.close()
 
-def filter_diff_variant_sites(reference_variants, target_variants, site_intersection = False):
-    by_reference = defaultdict(dict)
-    for variant in target:
-        by_reference[variant.CHROM][(variant.start, variant.end,)] = True
-    for variant in reference_vcf:
-        if by_reference[variant.CHROM][(variant.start, variant.end,)]:
-            if not site_intersection:
-                by_reference[variant.CHROM][(variant.start, variant.end,)] = False
+def split_vcf_by_chromosome(vcf_path, target_dir = None):
+    if target_dir == None:
+        target_dir = os.path.dirname(vcf_path)
     
 
 ## VCF Filter Classes
