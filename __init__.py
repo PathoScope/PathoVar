@@ -7,25 +7,8 @@ import json
 
 __all__ = ['snp_caller', 'web', 'snp_annotation', 'tests', 'setup']
 
-def get_external_databases_config():
-    try:
-        conf = json.load(open(os.path.dirname(__file__) + '/external_databases.json', 'r'))
-    except Exception, e:
-        print(e)
-        print("Writing Fresh external_databases.json config")
-        update_external_databases_config(DEFAULT_EXTERNAL_DATABASE_CONFIG)
-        conf = get_external_databases_config()
-    if "version" not in conf or conf['version']:
-        print("Your external database configuration is outdated, please rerun `python -m pathovar.setup` to update it!")
-    return conf
-
-def update_external_databases_config(config_dict):
-    json.dump(config_dict, open(os.path.dirname(__file__) + '/external_databases.json', 'w'))
-
-INSTALL_DIR = os.path.dirname(__file__)
-
 DEFAULT_EXTERNAL_DATABASE_CONFIG = {
-    "version": "0.2",
+    "version": "0.2b",
     "comprehensive_antibiotic_resistance_database": {
         "data_urls" : {
             "nucleotide" : [
@@ -82,10 +65,13 @@ DEFAULT_EXTERNAL_DATABASE_CONFIG = {
         "enabled": False
     }, 
     "immune_epitope_database": {
-         "data_urls":[
-             "http://www.iedb.org/doc/tcell_compact.zip",
-             "http://www.iedb.org/doc/bcell_compact.zip"
-         ],
+         "data_urls":{
+            "cell_assays": [
+                "http://www.iedb.org/doc/tcell_compact.zip",
+                "http://www.iedb.org/doc/bcell_compact.zip"            
+            ]
+
+         },
          "storage_path": "databases/immune_epitope_database/",
          "setup_script": "setup/immune_epitope_database_setup.py",
          "appropriate_organisms": [
@@ -94,6 +80,25 @@ DEFAULT_EXTERNAL_DATABASE_CONFIG = {
          "enabled": False
     }
 }
+
+def get_external_databases_config():
+    global DEFAULT_EXTERNAL_DATABASE_CONFIG
+    try:
+        conf = json.load(open(os.path.dirname(__file__) + '/external_databases.json', 'r'))
+    except Exception, e:
+        print(e)
+        print("Writing Fresh external_databases.json config")
+        update_external_databases_config(DEFAULT_EXTERNAL_DATABASE_CONFIG)
+        conf = get_external_databases_config()
+    if "version" not in conf or conf['version']:
+        print("Your external database configuration is outdated, please rerun `python -m pathovar.setup` to update it!")
+    return conf
+
+def update_external_databases_config(config_dict):
+    json.dump(config_dict, open(os.path.dirname(__file__) + '/external_databases.json', 'w'))
+
+INSTALL_DIR = os.path.dirname(__file__)
+
 
 
 

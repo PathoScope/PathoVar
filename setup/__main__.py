@@ -19,13 +19,13 @@ def main():
     if("version" not in database_config_data or 
         database_config_data['version'] != pathovar.DEFAULT_EXTERNAL_DATABASE_CONFIG["version"]):
         print("Updating external database configuration file...")
-        pathovar.update_external_databases_config(DEFAULT_EXTERNAL_DATABASE_CONFIG)
+        pathovar.update_external_databases_config(pathovar.DEFAULT_EXTERNAL_DATABASE_CONFIG)
         databases = set([name for name, values in database_config_data.items() 
             if name != "version" and values['enabled']])
         database_config_data = pathovar.get_external_databases_config()
 
 
-    if args.all or args.databases = []:
+    if args.all or args.databases == []:
         databases = set([name for name, values in database_config_data.items() 
             if name != "version"])
 
