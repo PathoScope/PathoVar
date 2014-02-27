@@ -14,7 +14,7 @@ class AnnotationReport(object):
         self.annotation_manager = annotation_manager
         self.data = dict()
         self.annotation_dict = annotation_manager.genome_annotations
-        self.genes, self.variant_by_gene = vcf_utils.get_variant_genes(self.vcf_path)
+        self.genes, self.variant_by_gene, self.intergenic_variants = vcf_utils.get_variant_genes(self.vcf_path)
         self.variant_by_gene =  {gene:[
         {
             "start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 

@@ -81,16 +81,17 @@ DEFAULT_EXTERNAL_DATABASE_CONFIG = {
     }
 }
 
-def get_external_databases_config():
+def get_external_databases_config(alert=False):
     global DEFAULT_EXTERNAL_DATABASE_CONFIG
     try:
         conf = json.load(open(os.path.dirname(__file__) + '/external_databases.json', 'r'))
     except Exception, e:
-        print(e)
-        print("Writing Fresh external_databases.json config")
+        if alert:
+            print(e)
+            print("Writing Fresh external_databases.json config")
         update_external_databases_config(DEFAULT_EXTERNAL_DATABASE_CONFIG)
         conf = get_external_databases_config()
-    if "version" not in conf or conf['version']:
+    if "version" not in conf or conf['version'] and alert:
         print("Your external database configuration is outdated, please rerun `python -m pathovar.setup` to update it!")
     return conf
 
@@ -98,9 +99,6 @@ def update_external_databases_config(config_dict):
     json.dump(config_dict, open(os.path.dirname(__file__) + '/external_databases.json', 'w'))
 
 INSTALL_DIR = os.path.dirname(__file__)
-
-
-
 
 ##
 # Installing Required Packages

@@ -97,26 +97,28 @@ def filter_vcf_in_memory(variant_reader, filters, keep=True, short_circuit = Fal
 def get_variant_genes(vcf_path):
     genes = {}
     variant_by_gene = defaultdict(list)
+    intergenic_variants = defaultdict(list)
     reader = vcf.Reader(open(vcf_path,'r'))
     for var in reader:
         gene_info = var.INFO.get('GENE', '')
-        if gene_info == '': continue
-        
-        gene_info_groups = gene_info.split('||')
-        general_info = gene_info_groups[0].split('|')
-        
-        # Fields are key:value pairs. Certain fields have special handling
-        # The first position will have a leading paren to exclude
-        general_info[0] = general_info[0][1:]
-        general_info = [pair.split(':') for pair in general_info]
-        gene_dict = {val[0]: val[1] for val in general_info}
-        for key in gene_dict:
-            if key != 'acc':
-                gene_dict[key] = gene_dict[key].replace('_', ' ')
-        genes[gene_dict['gi']] = gene_dict
-        variant_by_gene[gene_dict['gi']].append(var)
+        if gene_info == "(Intergenic)":
+            intergenic_variants[var.CHROM].append(var)
+        else:
+            gene_info_groups = gene_info.split('||')
+            general_info = gene_info_groups[0].split('|')
+            
+            # Fields are key:value pairs. Certain fields have special handling
+            # The first position will have a leading paren to exclude
+            general_info[0] = general_info[0][1:]
+            general_info = [pair.split(':') for pair in general_info]
+            gene_dict = {val[0]: val[1] for val in general_info}
+            for key in gene_dict:
+                if key != 'acc':
+                    gene_dict[key] = gene_dict[key].replace('_', ' ')
+            genes[gene_dict['gi']] = gene_dict
+            variant_by_gene[gene_dict['gi']].append(var)
 
-    return(genes, variant_by_gene)
+    return(genes, variant_by_gene, intergenic_variants)
 
 def vcf_to_gene_report(vcf_path):
     genes, variant_by_gene = get_variant_genes(vcf_path)

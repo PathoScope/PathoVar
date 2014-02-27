@@ -14,13 +14,14 @@ from pathovar.web.ncbi_xml import to_text, to_text_strip, to_int, to_attr_value
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
-    CACHE_SCHEMA_VERSION = '0.3.5b'
+    CACHE_SCHEMA_VERSION = '0.3.6b'
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
         self.mol_type = opts['mol_type']
         timer = time()
         self.gid = None
+        self.accession = None
         self.parser = None
         self.chromosome = None
         self.org_name = None
@@ -40,7 +41,7 @@ class GenBankFeatureFile(object):
         self.org_name = self.parser.find("org-ref_taxname").get_text().replace('\n',' ')
         self.genetic_code = int(self.parser.find("orgname_gcode").get_text())
         self.gid = self.parser.find("seq-id_gi").get_text()
-        
+        self.accession = self.parser.find("textseq-id_accession").get_text()
         if self.mol_type == 'nucl':
             self.chromosome = self.parser.find_all('iupacna')
             if self.chromosome:
@@ -102,7 +103,9 @@ class GenBankFeatureFile(object):
     def _from_json(self, json_dict):
         timer = time()
         self.gid = json_dict['gid']
+        self.accession = json_dict['accession']
         self.org_name = json_dict['name']
+        self.chromosome = json_dict['chromosome']
         self.genetic_code = json_dict.get('genetic_code', None)
         self.entries = {k:GenBankSeqEntry(v, self, **self.opts) for k,v in json_dict['entries'].items()}
 
@@ -112,6 +115,8 @@ class GenBankFeatureFile(object):
     def to_json_safe_dict(self):
         data_dict = {}
         data_dict['gid'] = self.gid
+        data_dict['accession'] = self.accession
+        data_dict['chromosome'] = self.chromosome
         data_dict['schema_version'] = GenBankFeatureFile.CACHE_SCHEMA_VERSION
         data_dict["name"] = self.org_name
         data_dict['genetic_code'] = self.genetic_code
@@ -129,6 +134,7 @@ class GenBankFeatureFile(object):
                 #if self.verbose: print("SNP Location %r mapped within %r" % ([snp.start, snp.end], entry))
                 last_entry_ind += ind
                 yield entry
+        yield IntergenicEntry()
 
     def __repr__(self):
         rep = "GenBankFile(" + self.mol_type + "|" + ', '.join(map(repr, self.entries)) + ")"
@@ -307,6 +313,13 @@ class GenBankSeqEntry(object):
         data_dict["annotations"] = {k:v.__dict__ for k,v in data_dict["annotations"].items()}
 
         return data_dict
+
+class IntergenicEntry(object):
+    def __init__(self):
+        pass
+
+    def to_info_field(self):
+        return "(Intergenic)"
 
 class AnnotationExtension(OrderedDict):
     def __init__(self,*args, **kwargs):

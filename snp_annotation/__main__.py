@@ -53,7 +53,7 @@ def main():
 
 	# Load internal configuration file
 	external_database_conf = pathovar.get_external_databases_config()
-	enabled_databases = [database_name for database_name, database_conf in external_database_conf.items() if database_conf['enabled']]
+	enabled_databases = [database_name for database_name, database_conf in external_database_conf.items() if database_name != 'version' and  database_conf['enabled']]
 	external_database_results = {}
 	waiting_jobs = []
 	
