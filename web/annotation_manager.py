@@ -4,7 +4,7 @@ import json
 
 from pathovar.web.entrez_eutils import EntrezEUtilsDriver
 from pathovar.web.ncbi_xml.genome_annotations import GenBankFeatureFile
-from pathovar.web.ncbi_xml.gene import GenBankGeneFile, GenBankBioSystemFile
+from pathovar.web.ncbi_xml.gene import GenBankGeneFile, GenBankBioSystemFile, GenBankGeneToBioSystem
 
 class EntrezAnnotationManager(object):
     def __init__(self, **opts):
@@ -23,6 +23,12 @@ class EntrezAnnotationManager(object):
             self.cache_manager = JSONAnnotationCacheManager(**opts)
         elif self.cache_type == None:
             self.cache_manager = None
+
+    def genome_mutual_gid_to_accesion(self):
+        mapping = {gid:genome.accession for gid, genome in self.genome_annotations.items()}
+        for key, value in mapping.items():
+            mapping[value] = key
+        return mapping
 
     def get_genome_annotation(self, gid):
         data = None
@@ -59,7 +65,18 @@ class EntrezAnnotationManager(object):
         return data
 
     def get_biosystems(self, gid):
-        biosystem_ids = self.entrez_handle.find_biosystem_ids_by_gene_id(gid)
+        biosystem_ids = None
+        if self.cache_manager:
+            try:
+                gene_to_biosystem = GenBankGeneToBioSystem(self.cache_manager.load_from_cache(gid, "gene-biosystem"), json=True)
+                biosystem_ids = gene_to_biosystem.biosystem_ids
+            except CachedObjectMissingOrOutdatedException:
+                gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_id(gid), gene_id = gid, xml = True)
+                self.cache_manager.write_to_cache(gene_to_biosystem, gid, "gene-biosystem")
+                biosystem_ids = gene_to_biosystem.biosystem_ids
+        else:
+            gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_id(gid), gene_id = gid, xml = True)
+            biosystem_ids = gene_to_biosystem.biosystem_ids
         biosystems = []
         for bsid in biosystem_ids:
             data = None
@@ -132,6 +149,7 @@ class AnnotationCacheManagerBase(object):
 class JSONAnnotationCacheManager(object):
     GENOME_DATA = '.anno.json'
     GENE_DATA = '.gene.json'
+    GENE_BIOSYSTEM_DATA = '.gene-biosys.json'
     BIOSYSTEM_DATA = '.biosys.json'
 
     def __init__(self, **opts):
@@ -159,6 +177,9 @@ class JSONAnnotationCacheManager(object):
         elif data_type == "biosystem":
             cache_file += JSONAnnotationCacheManager.BIOSYSTEM_DATA
             schema_version = GenBankBioSystemFile.CACHE_SCHEMA_VERSION
+        elif data_type == "gene-biosystem":
+            cache_file += JSONAnnotationCacheManager.GENE_BIOSYSTEM_DATA
+            schema_version = GenBankGeneToBioSystem.CACHE_SCHEMA_VERSION
         else:
             raise Exception("Annotation Data Type Missing")
         if os.path.exists(cache_file):
@@ -180,6 +201,8 @@ class JSONAnnotationCacheManager(object):
             cache_file += JSONAnnotationCacheManager.GENE_DATA
         elif data_type == "biosystem":
             cache_file += JSONAnnotationCacheManager.BIOSYSTEM_DATA
+        elif data_type == "gene-biosystem":
+            cache_file += JSONAnnotationCacheManager.GENE_BIOSYSTEM_DATA
         else:
             raise Exception("Annotation Data Type Missing")
         json.dump(data.to_json_safe_dict(), open(cache_file, 'w'))

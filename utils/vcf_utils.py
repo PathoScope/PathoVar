@@ -8,6 +8,8 @@ import vcf
 from vcf.parser import _Filter
 from vcf.filters import Base as VCFFilterBase
 
+from pathovar.utils import defline_parser
+
 class AnnotatedVariant(vcf.model._Record):
     def __init__(self, _record, annotations = None):
         if annotations == None:
@@ -102,7 +104,7 @@ def get_variant_genes(vcf_path):
     for var in reader:
         gene_info = var.INFO.get('GENE', '')
         if gene_info == "(Intergenic)":
-            intergenic_variants[var.CHROM].append(var)
+            intergenic_variants[defline_parser(var.CHROM)['gene_id']].append(var)
         else:
             gene_info_groups = gene_info.split('||')
             general_info = gene_info_groups[0].split('|')

@@ -152,6 +152,37 @@ class GOTerm(object):
         rep = "GOTerm(%(db)s|%(id)s|%(term)s)" % self.__dict__
         return rep
 
+class GenBankGeneToBioSystem(object):
+    CACHE_SCHEMA_VERSION = "0.2b"
+
+    def __init__(self, data, **opts):
+        self.parser = None
+        self.opts = opts
+        self.gene_id = None
+        self.biosystem_ids = None
+
+        if "xml" in self.opts:
+            self._parse_xml(data)
+        elif "json" in self.opts:
+            self._from_json(data)
+
+    def _parse_xml(self, data):
+        self.parser = BeautifulSoup(data)
+        self.gene_id = self.opts['gene_id']
+        self.biosystem_ids = list(set([link.get_text() for link in self.parser.find_all("id") if link.get_text() != self.gene_id]))
+
+
+    def _from_json(self, json_dict):
+        self.biosystem_ids = json_dict['biosystem_ids']
+        self.gene_id = json_dict['gene_id']
+
+    def to_json_safe_dict(self):
+        data_dict = self.__dict__
+        data_dict.pop('parser', None)
+        data_dict['schema_version'] = GenBankGeneToBioSystem.CACHE_SCHEMA_VERSION
+        return data_dict
+
+
 class GenBankBioSystemFile(object):
     CACHE_SCHEMA_VERSION = "0.1b"
     def __init__(self, data, **opts):

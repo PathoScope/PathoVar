@@ -1,6 +1,7 @@
 import os
 import re
 import json
+from copy import deepcopy
 from collections import defaultdict
 
 from pathovar.utils import vcf_utils, defline_parser
@@ -15,13 +16,16 @@ class AnnotationReport(object):
         self.data = dict()
         self.annotation_dict = annotation_manager.genome_annotations
         self.genes, self.variant_by_gene, self.intergenic_variants = vcf_utils.get_variant_genes(self.vcf_path)
-        self.variant_by_gene =  {gene:[
-        {
+        self.variant_by_gene =  {gene:[{
             "start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
-        "_var_type": var.var_type, 
-        "var_type": 
-        ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) else "deletion"))} 
-            for var in self.variant_by_gene[gene]] for gene in self.variant_by_gene }
+            "quality": var.QUAL, "depth": var.INFO["DP4"],
+            "_var_type": var.var_type, 
+            "var_type": 
+                ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) 
+                    else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) 
+                        else "deletion"))}
+            for var in self.variant_by_gene[gene]]
+                for gene in self.variant_by_gene }
         self.get_annotations_from_entrez_mapping()
 
     # Abstraction that hides the fact we are dealing with multiple organisms
@@ -49,14 +53,22 @@ class AnnotationReport(object):
     # Simplifies writing out final annotation. This forms a list of all organisms
     # being annotated. 
     def to_json_file(self):
-        json.dump(self.data.values(), open(self.vcf_path[:-3]+'json', 'w'))
+        print([id(org) for org in self.data.values()])
+        json_data = [deepcopy(org) for org in self.data.values()]
+        print([id(org) for org in json_data])
+        for val in json_data:
+            val.pop("chromosome", None)
+        json.dump(json_data, open(self.vcf_path[:-3]+'json', 'w'))
 
     def get_annotations_from_entrez_mapping(self):
         for gene in self.genes:
             for org,val in self.annotation_dict.items():
                 if gene in val.entries:
                     if val.org_name not in self.data:
-                        self.data[val.org_name] = {'name':val.org_name,'entries':{}}
+                        self.data[val.org_name] = {'name':val.org_name, 
+                            'accession': val.accession, 'gid': val.gid,
+                            'chromosome': val.chromosome, 'entries':{}
+                         }
                     if gene not in self.data:
                         entry = val.entries[gene]
                         self.data[val.org_name]['entries'][entry.gid] = entry.to_json_safe_dict()
@@ -148,6 +160,12 @@ class AnnotationReport(object):
             if not 'blast_hits' in query_entry:
                 query_entry['blast_hits'] = dict()
             query_entry['blast_hits'][db_name] = blast_results.queries[query].to_json_safe_dict()['hits']
+
+    def consume_generic_result(self, result_obj):
+        if self.verbose: print("Consuming %s Results" % result_obj.name)
+        for org_id, org_val in result_obj.items():
+            for gene_id, gene_val in org_val.items():
+                pass
 
     def write_text_report(self):
         handle = open(self.vcf_path[:-3] + 'report.tsv', 'w')

@@ -146,9 +146,10 @@ class EntrezEUtilsDriver(object):
         #if self.verbose: print("Fetching %s's BioSystems from Entrez" % gene_id)
         link_from_protein_to_biosystem_response = get_robust(link_from_protein_to_biosystem.format(**dict(id=gene_id)))
         link_from_protein_to_biosystem_response.raise_for_status()
-        link_set = BeautifulSoup(link_from_protein_to_biosystem_response.text)
-        link_set_ids = set([link.get_text() for link in link_set.find_all("id") if link.get_text() != gene_id])
-        return link_set_ids
+        return link_from_protein_to_biosystem_response.text
+        #link_set = BeautifulSoup(link_from_protein_to_biosystem_response.text)
+        #link_set_ids = set([link.get_text() for link in link_set.find_all("id") if link.get_text() != gene_id])
+        #return link_set_ids
 
     def find_biosystem_by_bsid(self, bsid):
         bsid = str(bsid)
