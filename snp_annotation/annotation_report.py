@@ -53,9 +53,7 @@ class AnnotationReport(object):
     # Simplifies writing out final annotation. This forms a list of all organisms
     # being annotated. 
     def to_json_file(self):
-        print([id(org) for org in self.data.values()])
         json_data = [deepcopy(org) for org in self.data.values()]
-        print([id(org) for org in json_data])
         for val in json_data:
             val.pop("chromosome", None)
         json.dump(json_data, open(self.vcf_path[:-3]+'json', 'w'))
