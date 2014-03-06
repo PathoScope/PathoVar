@@ -17,7 +17,7 @@ class GenBankFeatureFile(object):
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
-        self.mol_type = opts['mol_type']
+        self.mol_type = opts.get('mol_type', 'nucl')
         timer = time()
         self.gid = None
         self.accession = None
@@ -236,7 +236,7 @@ class GenBankSeqEntry(object):
             self.is_partial = False
 
         self.is_pseudo = self.parser.find(".//Seq-feat_pseudo")
-        if self.is_pseudo: 
+        if self.is_pseudo is not None: 
             self.is_pseudo = self.is_pseudo.get('value')
         else:
             self.is_pseudo = False
@@ -454,4 +454,8 @@ if __name__ == '__main__':
     file_name = sys.argv[1]
     data = ''.join(open(file_name).readlines())
     print("Parsing %s" % file_name)
-    gbf = GenBankFeatureFile(data, xml = True, verbose = True)
+    gbf = GenBankFeatureFile(data, mol_type = 'nucl' , xml = True, verbose = True)
+    IPython.embed()
+
+
+
