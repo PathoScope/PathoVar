@@ -7,6 +7,16 @@ from collections import defaultdict
 from pathovar.utils import vcf_utils, defline_parser
 from pathovar.utils.fasta_utils import SequenceRecord, MutatedSequenceRecord, MutationException
 
+def variant_to_dict(var):
+    return {
+        "start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
+        "quality": var.QUAL, "depth": var.INFO["DP4"],
+            "_var_type": var.var_type, 
+            "var_type": ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) 
+                    else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) 
+                        else "deletion"))
+                }
+
 class AnnotationReport(object):
     def __init__(self, vcf_path, annotation_manager, **opts):
         self.vcf_path = vcf_path
@@ -16,16 +26,7 @@ class AnnotationReport(object):
         self.data = dict()
         self.annotation_dict = annotation_manager.genome_annotations
         self.genes, self.variant_by_gene, self.intergenic_variants = vcf_utils.get_variant_genes(self.vcf_path)
-        self.variant_by_gene =  {gene:[{
-            "start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
-            "quality": var.QUAL, "depth": var.INFO["DP4"],
-            "_var_type": var.var_type, 
-            "var_type": 
-                ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) 
-                    else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) 
-                        else "deletion"))}
-            for var in self.variant_by_gene[gene]]
-                for gene in self.variant_by_gene }
+        self.variant_by_gene = {gene:[variant_to_dict(var) for var in self.variant_by_gene[gene]] for gene in self.variant_by_gene }
         self.get_annotations_from_entrez_mapping()
 
     # Abstraction that hides the fact we are dealing with multiple organisms
@@ -49,7 +50,6 @@ class AnnotationReport(object):
             raise KeyError("Key %s Not Found" % key)
         self.data[org_name]['entries'][key] = value
 
-
     # Simplifies writing out final annotation. This forms a list of all organisms
     # being annotated. 
     def to_json_file(self):
@@ -72,7 +72,6 @@ class AnnotationReport(object):
                         self.data[val.org_name]['entries'][entry.gid] = entry.to_json_safe_dict()
                         self.data[val.org_name]['entries'][entry.gid]['variants'] = self.variant_by_gene[gene]
 
-
     def get_entrez_gene_annotations(self):
         if self.verbose: print("Getting Genbank Gene Comment Annotations")
         for gene in self.genes:
@@ -84,7 +83,6 @@ class AnnotationReport(object):
         for gene in self.genes:
             biosystems = self.annotation_manager.get_biosystems(gene)
             self[gene]['biosystems'] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
-
 
     def generate_reference_protein_fasta_for_variants(self):
         if self.verbose: print("Generating Reference Protein Sequences.")
@@ -107,6 +105,21 @@ class AnnotationReport(object):
         fasta_handle.close()
         return fasta_name
 
+    def merge_intergenic_record_chunks(self):
+        for org_name, intergenics in self.intergenic_variants.items():
+            cluster_mapping = dict()
+            current_cluster = []
+            last_pos = intergenics[0].start
+            for var in intergenics:
+                if var.start - 500 >= last_pos:
+                    cluster = dict()
+                    cluster['snp_locs'] = map(variant_to_dict, current_cluster)
+                    cluster['nucleotide_sequence'] = self.data[org_name]["chromosome"][(last_pos-500):last_pos]
+                    cluster_mapping["intergenic-%d_%d" % (last_pos-500, last_pos)] = cluster
+                    current_cluster = []
+                    last_pos = var.start
+                current_cluster.append(var)
+            self.data[org_name]['intergenics'] = cluster_mapping
 
     ## TODO
     ## Mutation transformation validation fails on sequences with indels, and indices are unreliable

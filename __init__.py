@@ -100,6 +100,28 @@ def update_external_databases_config(config_dict):
 
 INSTALL_DIR = os.path.dirname(__file__)
 
+# For later migrating away from config only describing external databases hard-coded into the install dir
+def get_config(path, alert=False):
+    try:
+        conf = json.load(open(path))
+    except Exception, e:
+        if alert:
+            print(e)
+            print("Writng fresh configuration file.")
+        write_config(path, DEFAULT_EXTERNAL_DATABASE_CONFIG)
+        conf = get_config(path)
+    if "version" not in conf or conf['version'] and alert:
+        print("Your external database configuration is outdated, please rerun `python -m pathovar.setup` to update it!")
+    return conf
+
+def write_config(path, data):
+    try:
+        json.dump(data, open(path, 'w'))
+    except OSError, e:
+        print(e)
+        exit(-1)
+
+
 ##
 # Installing Required Packages
 #

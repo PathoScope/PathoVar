@@ -27,8 +27,6 @@ snp_caller_args.add_argument('-s','--snp-caller', action="store", default = "sam
 snp_caller_args.add_argument('-b','--snp-caller-binary-location', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
 
 snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
-snp_anno_args.add_argument('-a', '--annotation-engine', action='store', default = 'entrez', choices = ['entrez', 'snpeff', ''], help = "Select the program to annotate variants with [default:entrez]")
-snp_anno_args.add_argument("--no-cache", action= "store_true", default = False, help="Do not use the annotation cache to re-load annotations if they exist to speed up the annotation process.")
 snp_anno_args.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
 
 
@@ -104,6 +102,7 @@ def main(args):
 
 	annotation_report_driver.get_entrez_gene_annotations()
 	annotation_report_driver.get_biosystem_pathways()
+	annotation_report_driver.merge_intergenic_record_chunks()
 
 	# Block while annotations run
 	for job in waiting_jobs:

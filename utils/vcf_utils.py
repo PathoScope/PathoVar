@@ -104,7 +104,7 @@ def get_variant_genes(vcf_path):
     for var in reader:
         gene_info = var.INFO.get('GENE', '')
         if gene_info == "(Intergenic)":
-            intergenic_variants[defline_parser(var.CHROM)['gene_id']].append(var)
+            intergenic_variants[defline_parser(var.CHROM)['org_name'].replace('_', ' ')].append(var)
         else:
             gene_info_groups = gene_info.split('||')
             general_info = gene_info_groups[0].split('|')

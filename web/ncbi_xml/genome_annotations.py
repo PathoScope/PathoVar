@@ -4,17 +4,16 @@ from time import sleep, time
 from copy import copy
 from collections import OrderedDict, defaultdict
 
-from bs4 import BeautifulSoup
-
 from pathovar.utils.fasta_utils import SequenceRecord
 from pathovar.web import entrez_eutils
-from pathovar.web.ncbi_xml import to_text, to_text_strip, to_int, to_attr_value
+from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_value
+#from test_xml import ET, to_text, to_text_strip, to_int, to_attr_value
 
 ## GenBankFeatureFile
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
-    CACHE_SCHEMA_VERSION = '0.3.7'
+    CACHE_SCHEMA_VERSION = '0.3.7e'
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
@@ -28,6 +27,7 @@ class GenBankFeatureFile(object):
         self.genetic_code = None
         self.entries = {}
         self.features = []
+        self.last_entry_ind = 0
         if 'xml' in opts:
             self._parse_xml(data)
         elif 'json' in opts:
@@ -35,19 +35,19 @@ class GenBankFeatureFile(object):
 
     def _parse_xml(self, xml):
         timer = time()
-        self.parser = BeautifulSoup(xml)
+        self.parser = ET.fromstring(xml)
         if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
         if self.verbose: print("Searching for Chromosome")
-        self.org_name = self.parser.find("org-ref_taxname").get_text().replace('\n',' ')
-        self.genetic_code = int(self.parser.find("orgname_gcode").get_text())
-        self.gid = self.parser.find("seq-id_gi").get_text()
-        self.accession = self.parser.find("textseq-id_accession").get_text() + '.' + self.parser.find("textseq-id_version").get_text()
+        self.org_name = self.parser.find(".//Org-ref_taxname").text
+        self.genetic_code = int(self.parser.find(".//OrgName_gcode").text)
+        self.gid = self.parser.find(".//Seq-id_gi").text
+        self.accession = self.parser.find(".//Textseq-id_accession").text + '.' + self.parser.find(".//Textseq-id_version").text
         if self.mol_type == 'nucl':
-            self.chromosome = self.parser.find_all('iupacna')
+            self.chromosome = self.parser.findall('.//IUPACna')
             if self.chromosome:
                 self.chromosome = ''.join(map(to_text_strip, self.chromosome))
                 if self.verbose: print("Found, %d bp" % len(self.chromosome))
-            chromosome_len_parity = sum(map(to_int, self.parser.find_all('seq-literal_length')))
+            chromosome_len_parity = sum(map(to_int, self.parser.findall('.//Seq-literal_length')))
 
             if len(self.chromosome) != chromosome_len_parity and chromosome_len_parity != 0:
                 if self.verbose: print("Chromosome Length Parity Error (%d != %d). Sequence Data Missing. Attempting to fix" % (len(self.chromosome), chromosome_len_parity))
@@ -62,8 +62,8 @@ class GenBankFeatureFile(object):
                     raise GenBankFileChromosomeLengthMismatch("Could not resolve Chromosome Length Parity Error")
 
         if self.verbose: print("Gathering Entries and Features")
-        self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self, xml = True), self.parser.find_all("seq-entry")) }
-        self.features = map(lambda x: GenBankFeature(x, self), self.parser.find_all("seq-feat"))
+        self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self, xml = True), self.parser.findall(".//Seq-entry")) }
+        self.features = map(lambda x: GenBankFeature(x, self), self.parser.findall(".//Seq-feat"))
         
         # Features are subsets of Entries. It would be a good idea to compress them to a single entity
         # later. Entries capture finer resolution details about a particular gene
@@ -123,18 +123,20 @@ class GenBankFeatureFile(object):
         data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
         return(data_dict)
 
-    def locate_snp_site(self, snp):
-        last_entry_ind = 0
+    def locate_snp_site(self, snp, reset=False):
+        if reset:
+            self.last_entry_ind = 0
         entries = self.entries.values()
-        for ind, entry in enumerate(entries[last_entry_ind:]):
+        for ind, entry in enumerate(entries[self.last_entry_ind:]):
             #if self.verbose: print(entry.start, entry.end)
             #if self.verbose: print("check %d >= %d and %d <= %d" % (snp_loc, entry.start, snp_loc, entry.end))
             if (snp.start >= entry.start and snp.start <= entry.end) or (snp.end >= entry.end and snp.start <= entry.end) \
             or (snp.start <= entry.start and snp.end >= entry.start):
                 #if self.verbose: print("SNP Location %r mapped within %r" % ([snp.start, snp.end], entry))
-                last_entry_ind += ind
-                yield entry
-        yield IntergenicEntry()
+                self.last_entry_ind += ind
+                return entry
+
+        return IntergenicEntry()
 
     def __repr__(self):
         rep = "GenBankFile(" + self.mol_type + "|" + ', '.join(map(repr, self.entries)) + ")"
@@ -146,11 +148,11 @@ class GenBankFeatureFile(object):
 class GenBankFeature(object):
     def __init__(self, element, owner):
         self.element = element
-        self.gid = element.find('seq-id_gi').get_text().strip()
+        self.gid = to_text_strip(element.find('.//Seq-id_gi'))
         # Some features, especially in complex organisms, will have multi-part features. 
         # Capture all of that data
-        self.starts = map(to_int, self.element.find_all('seq-interval_from'))
-        self.ends = map(to_int, self.element.find_all('seq-interval_to'))
+        self.starts = map(to_int, self.element.findall('.//Seq-interval_from'))
+        self.ends = map(to_int, self.element.findall('.//Seq-interval_to'))
 
         # and set the extrema to the global start and stop
         self.start = None
@@ -163,9 +165,9 @@ class GenBankFeature(object):
             pass
 
         # Likely to be empty
-        self.dbxref = element.find_all('dbtag_db')
-        self.dbxref_type = map(lambda x: x.find("dbtag_db"), self.dbxref)
-        self.dbxref_id = map(lambda x: x.find("object-id_id"), self.dbxref)
+        self.dbxref = element.findall('.//Dbtag_db')
+        self.dbxref_type = map(lambda x: x.find(".//Dbtag_db"), self.dbxref)
+        self.dbxref_id = map(lambda x: x.find(".//Object-id_id"), self.dbxref)
 
         self.title = None
 
@@ -217,42 +219,42 @@ class GenBankSeqEntry(object):
     def _parse_xml(self, parser):
         self.parser = parser
 
-        self.gid = parser.find('seq-id_gi').get_text().strip()
-        self.accession = parser.find('textseq-id_accession').get_text().strip()
+        self.gid = to_text_strip(parser.find('.//Seq-id_gi'))
+        self.accession = to_text_strip(parser.find('.//Textseq-id_accession'))
         
-        self.strand = self.parser.find('na-strand')
-        if self.strand:
-            self.strand = self.strand.attrs['value']
+        self.strand = self.parser.find('.//Na-strand')
+        if self.strand is not None:
+            self.strand = self.strand.get('value')
             assert self.strand != ''
         else:
             self.strand = "?"
 
-        self.is_partial = self.parser.find("seq-feat_partial")
-        if self.is_partial: 
-            self.is_partial = self.is_partial.attrs['value']
+        self.is_partial = self.parser.find(".//Seq-feat_partial")
+        if self.is_partial is not None: 
+            self.is_partial = self.is_partial.get('value')
         else:
             self.is_partial = False
 
-        self.is_pseudo = self.parser.find("seq-feat_pseudo")
+        self.is_pseudo = self.parser.find(".//Seq-feat_pseudo")
         if self.is_pseudo: 
-            self.is_pseudo = self.is_pseudo.attrs['value']
+            self.is_pseudo = self.is_pseudo.get('value')
         else:
             self.is_pseudo = False
 
-        self.amino_acid_sequence = map(to_text, parser.find_all('iupacaa'))
+        self.amino_acid_sequence = map(to_text, parser.findall('.//IUPACaa'))
         # Prune later once starts and ends are set
         self.nucleotide_sequence = self.owner.chromosome
 
-        self.title = parser.find('seqdesc_title').get_text().strip()
-        #self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.find_all("seq-annot"))}
-        self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.find_all("seq-feat"))}
+        self.title = to_text_strip(parser.find('.//Seqdesc_title'))
+        #self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.findall("seq-annot"))}
+        self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.findall(".//Seq-feat"))}
 
-        self.comments = map(to_text_strip, parser.find_all('seq-feat_comment'))
+        self.comments = map(to_text_strip, parser.findall('.//Seq-feat_comment'))
         
-        #self._id = parser.find_all('bioseq_id')
-        #self._desc = parser.find_all("bioseq_descr")
-        #self._inst = parser.find_all("bioseq_inst")
-        #self._annot = parser.find_all("bioseq_annot")
+        #self._id = parser.findall('bioseq_id')
+        #self._desc = parser.findall("bioseq_descr")
+        #self._inst = parser.findall("bioseq_inst")
+        #self._annot = parser.findall("bioseq_annot")
 
 
     def _from_json(self, json_dict):
@@ -369,19 +371,19 @@ class GenBankAnnotation(object):
             self._from_json(data)
 
     def _parse_xml(self, data):
-        self.id = map(to_text_strip, data.find_all("seq-feat_dbxref"))
-        self.start = map(lambda x: int(x.get_text().replace(' ','')), data.find_all("seq-interval_from"))
-        self.end = map(lambda x: int(x.get_text().replace(' ','')), data.find_all("seq-interval_to"))
+        self.id = map(to_text_strip, data.findall(".//Seq-feat_dbxref"))
+        self.start = map(lambda x: int(x.text.replace(' ','')), data.findall(".//Seq-interval_from"))
+        self.end = map(lambda x: int(x.text.replace(' ','')), data.findall(".//Seq-interval_to"))
         
-        self.regions = []#list(map(lambda x: x.get_text().strip(), data.find_all("seqfeatdata_region")))
-        self.name = ', '.join(map(to_text_strip, data.find_all("gene-ref") + data.find_all("prot-ref_name_e")))
-        self.comments = (map(to_text_strip, data.find_all("seq-feat_comment")))
+        self.regions = []#list(map(lambda x: x.text.strip(), data.findall("seqfeatdata_region")))
+        self.name = ', '.join(map(to_text_strip, data.findall(".//Gene-ref") + data.findall(".//Prot-ref_name_e")))
+        self.comments = (map(to_text_strip, data.findall(".//Seq-feat_comment")))
         if self.name == '' and len(self.comments) > 0:
             self.name = self.comments[0]
-        raw_extensions = data.find_all("seq-feat_ext")
+        raw_extensions = data.findall(".//Seq-feat_ext")
         for raw_ext in raw_extensions:
-            obj_type = str(raw_ext.find("object-id_str").get_text().strip())
-            obj_data = map(to_text_strip, raw_ext.find_all("user-object_data")[0].find_all("user-field_data"))
+            obj_type = to_text_strip(raw_ext.find(".//Object-id_str"))
+            obj_data = map(to_text_strip, raw_ext.findall(".//User-object_data")[0].findall(".//User-field_data"))
             ext = AnnotationExtension()
             ext = self.process_extension(raw_ext)
             ext['ext_type'] = obj_type
@@ -400,14 +402,14 @@ class GenBankAnnotation(object):
         return rep
 
     def process_extension(self, raw_ext):
-        labels = map(to_text_strip, raw_ext.find_all("user-field_label"))
-        data = raw_ext.find_all("user-field_data")
+        labels = map(to_text_strip, raw_ext.findall(".//User-field_label"))
+        data = raw_ext.findall(".//User-field_data")
         values = []
         for datum in data:
-            text = datum.get_text().strip()
+            text = to_text_strip(datum)
             if len(text) == 0:
-                text = str(datum.attrs)
-                if text == '{}':
+                text = str(datum[0].get('value'))
+                if text == '[]':
                     text = ''
             values.append(text)
         ext = AnnotationExtension()
@@ -451,6 +453,5 @@ if __name__ == '__main__':
     import sys, IPython
     file_name = sys.argv[1]
     data = ''.join(open(file_name).readlines())
-    gbf = GenBankFeatureFile(data, xml = True, verbose = True, mol_type = "nucl")
-    print("Featre File stored in local variable `gbf`")
-    IPython.embed()
+    print("Parsing %s" % file_name)
+    gbf = GenBankFeatureFile(data, xml = True, verbose = True)

@@ -3,15 +3,15 @@ import json
 from collections import defaultdict
 from copy import copy
 
-from bs4 import BeautifulSoup
+from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_value
+
+
 
 HEADINGS = [
     "Pathways",
     "GeneOntology",
     "Interactions",
 ]
-
-from pathovar.web.ncbi_xml import to_text_strip, to_int, to_attr_value
 
 class GenBankGeneFile(object):
     CACHE_SCHEMA_VERSION = '0.3.5'
@@ -34,16 +34,18 @@ class GenBankGeneFile(object):
             self._from_json(data)
 
     def _parse_xml(self, data):
-        self.parser = BeautifulSoup(data)
-        self.gene_db_id = self.parser.find("gene-track_geneid").get_text()
-        self.gene_symbol = self.parser.find("gene-ref_locus")
-        if self.gene_symbol:
+        self.parser = ET.fromstring(data)
+        self.gene_db_id = self.parser.find(".//Gene-track_geneid")
+        if self.gene_db_id is not None:
+            self.gene_db_id = self.gene_db_id.text
+        self.gene_symbol = self.parser.find(".//Gene-ref_locus")
+        if self.gene_symbol is not None:
             self.gene_symbol = to_text_strip(self.gene_symbol)
-        self.gene_ref_tag = (self.parser.find("gene-ref_locus-tag"))
-        if self.gene_ref_tag:
+        self.gene_ref_tag = self.parser.find(".//Gene-ref_locus-tag")
+        if self.gene_ref_tag is not None:
             self.gene_ref_tag = to_text_strip(self.gene_ref_tag)
         
-        self.comments = [GenBankGeneFileComment(x.parent,self, xml=True) for x in self.parser.find_all('gene-commentary_heading') 
+        self.comments = [GenBankGeneFileComment(x,self, xml=True) for x in self.parser.findall('.//Gene-commentary_heading/..') 
             if to_text_strip(x) in HEADINGS]
         for comment in self.comments:
             self.pathways.extend(comment.pathways)
@@ -81,7 +83,7 @@ class GenBankGeneFileComment(object):
 
     def _parse_xml(self, data):
         self.parser = data
-        self.headings = [to_text_strip(h) for h in self.parser.find_all("gene-commentary_heading")]
+        self.headings = [to_text_strip(h) for h in self.parser.findall(".//Gene-commentary_heading")]
 
         if "Pathways" in self.headings:
             self._parse_pathways()
@@ -91,30 +93,30 @@ class GenBankGeneFileComment(object):
 
     def _parse_pathways(self):
         pathways = []
-        subcomponents = [x for x in self.parser.find_all("gene-commentary")]
+        subcomponents = [x for x in self.parser.findall(".//Gene-commentary")]
         for subcomponent in subcomponents:
-            text = to_text_strip(subcomponent.find("gene-commentary_text"))
-            db = to_text_strip(subcomponent.find("dbtag_db"))
-            id = to_text_strip(subcomponent.find("object-id_str"))
-            url = to_text_strip(subcomponent.find("other-source_url"))
+            text = to_text_strip(subcomponent.find(".//Gene-commentary_text"))
+            db = to_text_strip(subcomponent.find(".//Dbtag_db"))
+            id = to_text_strip(subcomponent.find(".//Object-id_str"))
+            url = to_text_strip(subcomponent.find(".//Other-source_url"))
             pathway = Pathway(text, db, id, url)
             pathways.append(pathway)
         self.pathways = pathways
 
     def _parse_gene_ontologies(self):
-        subcomponents = [x for x in self.parser.find_all("gene-commentary")]
-        subcomponents_categories = [x.find("gene-commentary_label") for x in subcomponents if x.find("gene-commentary_label")]
+        subcomponents = [x for x in self.parser.findall(".//Gene-commentary")]
+        subcomponents_categories = [x.find(".//Gene-commentary_label") for x in subcomponents if x.find(".//Gene-commentary_label")]
         subcomponents_categories = {to_text_strip(x): x.parent for x in subcomponents_categories}
 
         go_terms = dict()
         for category_name in subcomponents_categories:
             category = subcomponents_categories[category_name]
-            entries = category.find_all("gene-commentary")
+            entries = category.findall(".//Gene-commentary")
             entry_terms = []
             for ent in entries:
-                db = ent.find("dbtag_db").get_text()
-                id = ent.find("object-id_id").get_text()
-                term = ent.find("other-source_anchor").get_text()
+                db = ent.find(".//Dbtag_db").text
+                id = ent.find(".//Object-id_id").text
+                term = ent.find(".//Other-source_anchor").text
                 go_term = GOTerm(db, id, term)
                 entry_terms.append(go_term)
             go_terms[category_name] = entry_terms
@@ -167,9 +169,9 @@ class GenBankGeneToBioSystem(object):
             self._from_json(data)
 
     def _parse_xml(self, data):
-        self.parser = BeautifulSoup(data)
+        self.parser = ET.fromstring(data)
         self.gene_id = self.opts['gene_id']
-        self.biosystem_ids = list(set([link.get_text() for link in self.parser.find_all("id") if link.get_text() != self.gene_id]))
+        self.biosystem_ids = list(set([link.text for link in self.parser.findall(".//Id") if link.text != self.gene_id]))
 
 
     def _from_json(self, json_dict):
@@ -201,13 +203,13 @@ class GenBankBioSystemFile(object):
             self._from_json(data)
 
     def _parse_xml(self, data):
-        self.parser = BeautifulSoup(data)
-        self.system_names = [to_text_strip(name) for name in self.parser.find_all("system_names_e")]
-        self.system_id = self.parser.find("sys-id_bsid").get_text()
-        self.system_description = self.parser.find("system_description").get_text()
-        self.external_url = self.parser.find("system_recordurl").get_text()
-        self.external_accession = self.parser.find("system_externalaccn").get_text()
-        self.system_categories = [to_text_strip(cat) for cat  in self.parser.find_all("system_category_e")]
+        self.parser = ET.fromstring(data)
+        self.system_names = [to_text_strip(name) for name in self.parser.findall(".//System_names_e")]
+        self.system_id = self.parser.find(".//Sys-id_bsid").text
+        self.system_description = self.parser.find(".//System_description").text
+        self.external_url = self.parser.find(".//System_recordurl").text
+        self.external_accession = self.parser.find(".//System_externalaccn").text
+        self.system_categories = [to_text_strip(cat) for cat  in self.parser.findall(".//System_category_e")]
 
     def to_json_safe_dict(self):
         data_dict = self.__dict__
@@ -224,3 +226,11 @@ class GenBankBioSystemFile(object):
         self.external_accession = json_dict["external_accession"]
         self.system_categories = json_dict["system_categories"]
 
+if __name__ == '__main__':
+    import sys
+    file_name = sys.argv[1]
+    data = ''.join(open(file_name).readlines())
+    ggf = GenBankGeneFile(data, xml = True, verbose = True)
+    import IPython
+    print("GeneFile stored in local variable `ggf`")
+    IPython.embed()

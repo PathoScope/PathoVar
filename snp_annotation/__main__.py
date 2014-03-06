@@ -15,7 +15,6 @@ argparser = argparse.ArgumentParser(prog = "snp_annotation")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
 argparser.add_argument("vcf_file", help = "The variant call file to annotate")
 argparser.add_argument("--test", action = "store_true", required = False)
-argparser.add_argument("--no-cache", action= "store_true", default = False, help="Do not use the annotation cache to re-load annotations if they exist to speed up the annotation process.")
 argparser.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
 argparser.add_argument('--min-depth', type=int, default=5, help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
 argparser.add_argument('--alt-depth', type=float, default=0.4, help="The MAF threshold, under which variants are ignored [default:0.4]")
@@ -26,7 +25,6 @@ def main():
 	opts = dict()
 	opts['verbose'] = args.verbose
 	opts['cache_dir'] = args.cache_dir
-	opts['no_cache'] = args.no_cache
 
 	filter_args = utils.Namespace()
 	filter_args.alt_depth = args.alt_depth
@@ -43,13 +41,7 @@ def main():
 	anno_vcf = variant_locator.write_annotated_vcf()
 
 	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)
-
-
 	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
-
-	#from pathovar.utils import vcf_utils
-	#if args.verbose: print("Generating Gene Report.")
-	#vcf_utils.vcf_to_gene_report(anno_vcf)
 
 	# Load internal configuration file
 	external_database_conf = pathovar.get_external_databases_config()
@@ -73,6 +65,7 @@ def main():
 
 	annotation_report_driver.get_entrez_gene_annotations()
 	annotation_report_driver.get_entrez_biosystem_pathways()
+	annotation_report_driver.merge_intergenic_record_chunks()
 
 	# Block while annotations run
 	for job in waiting_jobs:
