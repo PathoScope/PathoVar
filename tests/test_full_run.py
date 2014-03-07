@@ -3,11 +3,10 @@ import os
 import glob
 
 import pathovar
-from pathovar.__main__ import main
-from pathovar.web import entrez_eutils
-from pathovar.snp_caller import samtools_snp_caller
+from pathovar.__main__ import call_snps
+from pathovar.snp_annotation.__main__ import find_variant_locations, run_annotation_report
+
 from pathovar.web import annotation_manager
-from pathovar.snp_annotation import locate_variant, comprehensive_antibiotic_resistance_database_annotator as CARD, annotation_report
 
 from pathovar import utils
 from pathovar.utils import vcf_utils
@@ -16,26 +15,31 @@ global_args = utils.Namespace()
 global_args.verbose = True
 global_args.clean = True
 
-global_args.org_names = None
-global_args.tax_ids = None
-global_args.gene_ids = None
-
-
 global_args.snp_caller = "samtools"
 global_args.snp_caller_binary_location = ""
 
-global_args.annotation_engine = "entrez"
-global_args.no_cache = True
+global_args.sam_file = "data/updated_outalign.sam"
 
-global_args.sam_file = "data/updated_CC_287_cDNA_sanger_clean_target0_2.sam"
-global_args.reference_genomes = "data/rsv.fa"
+global_args.reference_genomes = "data/klebsiella-pneumoniae_ti.fa"
+global_args.org_names = None
+global_args.gene_ids = None
+global_args.tax_ids = "1125630"
+global_args.keep_all_sequences = False
+
+global_args.cache_dir = '.anno_cache/'
 
 global_args.min_depth = 5
 global_args.alt_depth = 0.4
-global_args.keep_all = True
 
+opts = {}
+opts['verbose'] = global_args.verbose
+opts['clean'] = global_args.clean
+opts['cache_dir'] = global_args.cache_dir
 
-annotation_reporter = None
+variant_file = None
+anno_vcf = None
+annotation_manager_driver = None
+annotation_report_driver = None
 ref_fa = None
 
 class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
@@ -57,39 +61,26 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
 
     def test_step_1_call_snps(self):
         print("\nCalling SNPs")
-        snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = global_args.snp_caller_binary_location, **global_args.__dict__)
-        snp_caller_driver.call_snps(global_args.sam_file, source = global_args.reference_genomes, 
-            org_names_reg = global_args.org_names, tax_ids_reg = global_args.tax_ids, 
-            gene_ids_reg = global_args.gene_ids, keep_all = global_args.keep_all)
-        self.assertTrue(os.path.exists(global_args.sam_file[:-3] + 'vcf'), "Calls to samtools|bcftools did not produce a VCF File")
+        global variant_file
+        variant_file = call_snps(global_args, **opts)
+        self.assertTrue(os.path.exists(variant_file), "Calls to call_snps() did not produce a VCF File")
         
     def test_step_2_annotate_snps(self):
         print("\nAnnotating SNPs")
         filter_args = utils.Namespace()
         filter_args.alt_depth = global_args.alt_depth
         filter_args.min_depth = global_args.min_depth
-
+        global annotation_manager_driver
         annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**global_args.__dict__)
-
-        snp_annotation_driver = locate_variant.VariantLocator(global_args.sam_file[:-3] + 'vcf', 
-            annotation_manager = annotation_manager_driver,
-            **dict(filter_args = filter_args, **global_args.__dict__))
-        snp_annotation_driver.annotate_all_snps()
-        anno_vcf = snp_annotation_driver.write_annotated_vcf()
-        self.assertTrue(os.path.exists(global_args.sam_file[:-3] + 'anno.vcf'), "Calls locate_variant.py did not produce an annotated VCF File")
-        global annotation_reporter
-        annotation_reporter = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver)
-        annotation_reporter.generate_mutant_nucleotide_sequences()
-        global ref_fa
-        ref_fa = annotation_reporter.generate_reference_protein_fasta_for_variants()
-        self.assertTrue(os.path.exists(ref_fa), "Calls to vcf_utils did not produce a reference fasta for sequences with variants")
+        global anno_vcf
+        anno_vcf = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = filter_args, **opts))
+        self.assertTrue(os.path.exists(anno_vcf), "Calls find_variant_locations() did not produce an annotated VCF File")
     
     def test_step_3_external_database_search(self):
-        self.assertTrue(os.path.exists(ref_fa), "Previous steps did not initialize reference fasta for sequences with variants")
-        card_annotator = CARD.CARDProteinBlastAnnotator()
-        card_annotator.query_with_proteins(ref_fa)
-        card_annotator.wait_for_results()
-
+        global annotation_report_driver
+        annotation_report_driver = run_annotation_report(global_args, anno_vcf, annotation_manager_driver, **opts)
+        result_json = annotation_report_driver.to_json_file()
+        self.assertTrue(os.path.exists(result_json), "Calls to run_annotation_report() did not produce an a JSON File")
 
 if __name__ == '__main__':
     unittest.main()

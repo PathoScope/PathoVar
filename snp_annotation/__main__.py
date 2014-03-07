@@ -34,19 +34,22 @@ def main(args):
 	if not os.path.exists(args.vcf_file): raise IOError("Input .vcf File Not Found")
 	timer = time()
 	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
-	variant_locator_driver = locate_variant.VariantLocator(args.vcf_file, annotation_manager = annotation_manager_driver, **opts)
-	variant_locator_driver.annotate_all_snps()
 
-	anno_vcf = variant_locator_driver.write_annotated_vcf()
-
+	anno_vcf = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
-
 	annotation_report_driver.to_json_file()
 
 	print("Annotation Complete (%r sec)" % (time() - timer))
 	if(args.test):
 		import IPython
 		IPython.embed()
+
+def find_variant_locations(vcf_file, annotation_manager_driver, **opts):
+	variant_locator_driver = locate_variant.VariantLocator(vcf_file, annotation_manager = annotation_manager_driver, **opts)
+	variant_locator_driver.annotate_all_snps()
+	anno_vcf = variant_locator_driver.write_annotated_vcf()
+	return anno_vcf
+
 
 def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)

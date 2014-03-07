@@ -34,13 +34,7 @@ snp_filt_args = argparser.add_argument_group("Variant Filtering Options")
 snp_filt_args.add_argument('--min-depth', type=int, default=5, help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
 snp_filt_args.add_argument('--alt-depth', type=float, default=0.4, help="The minimum ratio of all calls for a locus that must be an alternative allele [default:0.4]")
 
-def main(args):
-	opts = {}
-	opts['verbose'] = args.verbose
-	opts['clean'] = args.clean
-	opts['cache_dir'] = args.cache_dir
-
-	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
+def call_snps(args, **opts):
 	snp_caller_driver = None
 	start_clock = time()
 	if args.snp_caller == "samtools":
@@ -54,7 +48,16 @@ def main(args):
 
 	snp_called_time = time()
 	if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
+	return variant_file
 
+def main(args):
+	opts = {}
+	opts['verbose'] = args.verbose
+	opts['clean'] = args.clean
+	opts['cache_dir'] = args.cache_dir
+
+	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
+	variant_file = call_snps(args, **opts)
 	variant_locator_driver = None
 	anno_vcf = None
 
@@ -63,16 +66,13 @@ def main(args):
 	filter_args.min_depth = args.min_depth
 
 	from pathovar.snp_annotation import locate_variant, annotation_report 
-	from pathovar.snp_annotation.__main__ import run_annotation_report
+	from pathovar.snp_annotation.__main__ import run_annotation_report, find_variant_locations
 	from pathovar.web import annotation_manager
 
 	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
 
-	variant_locator_driver = locate_variant.VariantLocator(variant_file, 
-		**dict(filter_args = filter_args, annotation_manager = annotation_manager_driver, **opts))
-
-	variant_locator_driver.annotate_all_snps()
-	anno_vcf = variant_locator_driver.write_annotated_vcf()
+	anno_vcf = find_variant_locations(variant_file, annotation_manager_driver = annotation_manager_driver,
+		**dict(filter_args = filter_args, **opts))
 
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
 
