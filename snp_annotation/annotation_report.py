@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from pathovar.utils import vcf_utils, defline_parser
 from pathovar.utils.fasta_utils import SequenceRecord, MutatedSequenceRecord, MutationException
+from pathovar.web.entrez_eutils import EntrezEUtilsDriverException
 
 def variant_to_dict(var):
     return {
@@ -33,6 +34,7 @@ class AnnotationReport(object):
     def __getitem__(self, key):
         org_name = None
         for org in self.data:
+            #print(org, (self.data[org]['entries']))
             if key in self.data[org]['entries']:
                 org_name = org
                 break
@@ -53,36 +55,43 @@ class AnnotationReport(object):
     # Simplifies writing out final annotation. This forms a list of all organisms
     # being annotated. 
     def to_json_file(self):
-        json_data = [deepcopy(org) for org in self.data.values()]
+        json_data = [deepcopy(org) for org in self.data.values() if len(org['entries'].keys()) > 0]
         for val in json_data:
             val.pop("chromosome", None)
         json.dump(json_data, open(self.vcf_path[:-3]+'json', 'w'))
 
     def get_annotations_from_entrez_mapping(self):
+        for org,val in self.annotation_dict.items():
+            if val.org_name + ':' + val.gid not in self.data:
+                self.data[val.org_name + ':' + val.gid] = {'name':val.org_name, 
+                    'accession': val.accession, 'gid': val.gid,
+                    'chromosome': val.chromosome, 'entries':{}
+                 }
         for gene in self.genes:
             for org,val in self.annotation_dict.items():
                 if gene in val.entries:
-                    if val.org_name not in self.data:
-                        self.data[val.org_name] = {'name':val.org_name, 
-                            'accession': val.accession, 'gid': val.gid,
-                            'chromosome': val.chromosome, 'entries':{}
-                         }
                     if gene not in self.data:
                         entry = val.entries[gene]
-                        self.data[val.org_name]['entries'][entry.gid] = entry.to_json_safe_dict()
-                        self.data[val.org_name]['entries'][entry.gid]['variants'] = self.variant_by_gene[gene]
+                        self.data[val.org_name + ':' + val.gid]['entries'][entry.gid] = entry.to_json_safe_dict()
+                        self.data[val.org_name + ':' + val.gid]['entries'][entry.gid]['variants'] = self.variant_by_gene[gene]
 
     def get_entrez_gene_annotations(self):
         if self.verbose: print("Getting Genbank Gene Comment Annotations")
         for gene in self.genes:
-            gene_comments = self.annotation_manager.get_gene_comments(gene)
-            self[gene]['gene_comments'] = gene_comments.to_json_safe_dict()
+            try:
+                gene_comments = self.annotation_manager.get_gene_comments(gene)
+                self[gene]['gene_comments'] = gene_comments.to_json_safe_dict()
+            except EntrezEUtilsDriverException, e:
+                if self.verbose: print(str(gene) + " is not in Gene database.")
 
     def get_entrez_biosystem_pathways(self):
         if self.verbose: print("Getting Genbank BioSystem Pathway Annotations")
         for gene in self.genes:
-            biosystems = self.annotation_manager.get_biosystems(gene)
-            self[gene]['biosystems'] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
+            try:
+                biosystems = self.annotation_manager.get_biosystems(gene)
+                self[gene]['biosystems'] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
+            except EntrezEUtilsDriverException, e:
+                if self.verbose: print(str(gene) + " is not in BioSystem database.")
 
     def generate_reference_protein_fasta_for_variants(self):
         if self.verbose: print("Generating Reference Protein Sequences.")
@@ -113,13 +122,19 @@ class AnnotationReport(object):
             for var in intergenics:
                 if var.start - 500 >= last_pos:
                     cluster = dict()
-                    cluster['snp_locs'] = map(variant_to_dict, current_cluster)
-                    cluster['nucleotide_sequence'] = self.data[org_name]["chromosome"][(last_pos-500):last_pos]
-                    cluster_mapping["intergenic-%d_%d" % (last_pos-500, last_pos)] = cluster
+                    cluster['start'] = current_cluster[0].start
+                    cluster['end'] = current_cluster[0].start + 750
+                    cluster['variants'] = map(variant_to_dict, current_cluster)
+                    cluster['nucleotide_sequence'] = self.data[org_name]["chromosome"][(cluster['start'] - 250):cluster['end']]
+                    cluster['is_intergenic'] = True
+                    cluster['title'] = "intergenic-%d_%d" % ((cluster['start'] - 250), cluster['start'])
+                    cluster['gid'] = self.data[org_name]['gid']
+                    cluster['accession'] = self.data[org_name]['accession']
+                    cluster_mapping[cluster['title']] = cluster
                     current_cluster = []
                     last_pos = var.start
                 current_cluster.append(var)
-            self.data[org_name]['intergenics'] = cluster_mapping
+            self.data[org_name]['entries'].update(cluster_mapping)
 
     ## TODO
     ## Mutation transformation validation fails on sequences with indels, and indices are unreliable

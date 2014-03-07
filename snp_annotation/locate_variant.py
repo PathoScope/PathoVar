@@ -39,7 +39,7 @@ class VariantLocator(object):
         opt_args = dict(verbose=self.verbose)
         if "gene_id" in ids:
             genome_annotations = self.annotation_manager.get_genome_annotation(ids['gene_id'])
-            annotations.append(genome_annotations.locate_snp_site(variant))
+            annotations.append(genome_annotations.locate_snp_site(variant, reset=True))
         else:
             raise ReferenceUnparsedException("Could not parse GID from CHROM entry, %s" % str(variant))
 

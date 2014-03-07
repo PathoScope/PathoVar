@@ -133,7 +133,7 @@ class EntrezEUtilsDriver(object):
             query_key = get_link_from_protein_to_gene_response_xml.find('querykey').get_text()
             web_env = get_link_from_protein_to_gene_response_xml.find('webenv').get_text()
         except:
-            if(self.verbose): print(get_link_from_protein_to_gene_response_xml)
+            #if(self.verbose): print(get_link_from_protein_to_gene_response_xml)
             raise EntrezEUtilsDriverException("Query Key and/or Web Env Missing")
         get_gene_from_link_response = get_robust(get_gene_from_link.format(**dict(id=gene_id, form=form, query_key=query_key, 
             web_env=web_env)))
@@ -147,9 +147,6 @@ class EntrezEUtilsDriver(object):
         link_from_protein_to_biosystem_response = get_robust(link_from_protein_to_biosystem.format(**dict(id=gene_id)))
         link_from_protein_to_biosystem_response.raise_for_status()
         return link_from_protein_to_biosystem_response.text
-        #link_set = BeautifulSoup(link_from_protein_to_biosystem_response.text)
-        #link_set_ids = set([link.get_text() for link in link_set.find_all("id") if link.get_text() != gene_id])
-        #return link_set_ids
 
     def find_biosystem_by_bsid(self, bsid):
         bsid = str(bsid)
