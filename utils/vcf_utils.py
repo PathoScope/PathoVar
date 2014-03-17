@@ -103,7 +103,7 @@ def get_variant_genes(vcf_path):
     reader = vcf.Reader(open(vcf_path,'r'))
     for var in reader:
         gene_info = var.INFO.get('GENE', '')
-        if gene_info == "(Intergenic)":
+        if re.search(r"Intergenic", gene_info ):
             idents = defline_parser(var.CHROM)
             org_name = idents['org_name'].replace('_', ' ')
             gid = idents['gene_id']
@@ -118,7 +118,7 @@ def get_variant_genes(vcf_path):
             general_info = [pair.split(':') for pair in general_info]
             gene_dict = {val[0]: val[1] for val in general_info}
             for key in gene_dict:
-                if key != 'acc':
+                if key not in ('acc', 'gi'):
                     gene_dict[key] = gene_dict[key].replace('_', ' ')
             genes[gene_dict['gi']] = gene_dict
             variant_by_gene[gene_dict['gi']].append(var)

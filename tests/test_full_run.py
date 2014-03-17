@@ -2,6 +2,8 @@ import unittest
 import os
 import glob
 
+from time import time
+
 import pathovar
 from pathovar.__main__ import call_snps
 from pathovar.snp_annotation.__main__ import find_variant_locations, run_annotation_report
@@ -18,7 +20,7 @@ global_args.clean = True
 global_args.snp_caller = "samtools"
 global_args.snp_caller_binary_location = ""
 
-global_args.sam_file = "data/updated_outalign.sam"
+global_args.sam_file = "data/updated_outalign.sam.filt.sam"
 
 global_args.reference_genomes = "data/klebsiella-pneumoniae_ti.fa"
 global_args.org_names = None
@@ -61,12 +63,16 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
 
     def test_step_1_call_snps(self):
         print("\nCalling SNPs")
+        timer = time()
         global variant_file
         variant_file = call_snps(global_args, **opts)
         self.assertTrue(os.path.exists(variant_file), "Calls to call_snps() did not produce a VCF File")
+        elapsed = time() - timer
+        print("%s ms elapsed" % str(elapsed))
         
     def test_step_2_annotate_snps(self):
         print("\nAnnotating SNPs")
+        timer = time()
         filter_args = utils.Namespace()
         filter_args.alt_depth = global_args.alt_depth
         filter_args.min_depth = global_args.min_depth
@@ -75,12 +81,17 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         global anno_vcf
         anno_vcf = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = filter_args, **opts))
         self.assertTrue(os.path.exists(anno_vcf), "Calls find_variant_locations() did not produce an annotated VCF File")
+        elapsed = time() - timer
+        print("%s ms elapsed" % str(elapsed))
     
     def test_step_3_external_database_search(self):
+        timer = time()
         global annotation_report_driver
         annotation_report_driver = run_annotation_report(global_args, anno_vcf, annotation_manager_driver, **opts)
         result_json = annotation_report_driver.to_json_file()
         self.assertTrue(os.path.exists(result_json), "Calls to run_annotation_report() did not produce an a JSON File")
+        elapsed = time() - timer
+        print("%s ms elapsed" % str(elapsed))
 
 if __name__ == '__main__':
     unittest.main()

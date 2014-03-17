@@ -33,11 +33,15 @@ genome_by_org_name = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?
 link_from_genome_to_nuccore =   'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=genome&db=nuccore&id={id}&cmd=neighbor_history'
 link_from_protein_to_gene =     "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=protein&db=gene&id={id}&cmd=neighbor_history"
 link_from_protein_to_biosystem = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?&db=biosystems&dbfrom=protein&id={id}"
+link_from_gene_to_biosystem = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?&db=biosystems&dbfrom=gene&id={id}"
 # Retrieve all matching nucleotide sequences
 get_nucleotides_from_link = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&' \
                             'query_key={query_key}&WebEnv={web_env}&rettype={form}&retmode={mode}'
 
 get_gene_from_link = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=gene&rettype={form}&query_key={query_key}&WebEnv={web_env}"
+
+get_gene_by_locus_tag = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=gene&term={locus_tag}&retmode=xml"
+get_gene_by_gene_id = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=gene&id={gene_id}&rettype=xml'
 
 # Retrieve a particular sequence record by gene id
 get_nucleotides_by_gene_id = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id={gene_id}&rettype={form}&retmode={mode}'
@@ -118,7 +122,7 @@ class EntrezEUtilsDriver(object):
         get_protein_sequences_response.raise_for_status()
         return get_protein_sequences_response.text
         
-    def find_gene_by_gene_id(self, gene_id, form = 'xml'):
+    def find_gene_by_protein_id(self, gene_id, form = 'xml'):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
         timer = time()
@@ -140,13 +144,30 @@ class EntrezEUtilsDriver(object):
         get_gene_from_link_response.raise_for_status()
         return get_gene_from_link_response.text
 
-    def find_biosystem_ids_by_gene_id(self, gene_id):
-        gene_id = str(gene_id)
+    def find_gene_by_locus_tag(self, locus_tag):
         timer = time()
-        #if self.verbose: print("Fetching %s's BioSystems from Entrez" % gene_id)
-        link_from_protein_to_biosystem_response = get_robust(link_from_protein_to_biosystem.format(**dict(id=gene_id)))
+        if self.verbose: print ("Fetching %s from Entrez" % locus_tag)
+        get_gene_id_from_locus_tag_response_xml = BeautifulSoup(get_robust(get_gene_by_locus_tag.format(**dict(locus_tag=locus_tag))).text)
+        gene_id = get_gene_id_from_locus_tag_response_xml.find('id').get_text()
+        get_gene_by_gene_id_response = get_robust(get_gene_by_gene_id.format(**dict(gene_id=gene_id)))
+        return get_gene_by_gene_id_response.text
+
+
+    def find_biosystem_ids_by_gid(self, gid):
+        gid = str(gid)
+        timer = time()
+        #if self.verbose: print("Fetching %s's BioSystems from Entrez" % gid)
+        link_from_protein_to_biosystem_response = get_robust(link_from_protein_to_biosystem.format(**dict(id=gid)))
         link_from_protein_to_biosystem_response.raise_for_status()
         return link_from_protein_to_biosystem_response.text
+
+    def find_biosystem_ids_by_gene_db_id(self, gene_db_id):
+        gene_db_id = str(gene_db_id)
+        timer = time()
+        #if self.verbose: print("Fetching %s's BioSystems from Entrez" % gid)
+        link_from_gene_to_biosystem_response = get_robust(link_from_gene_to_biosystem.format(**dict(id=gene_db_id)))
+        link_from_gene_to_biosystem_response.raise_for_status()
+        return link_from_gene_to_biosystem_response.text
 
     def find_biosystem_by_bsid(self, bsid):
         bsid = str(bsid)

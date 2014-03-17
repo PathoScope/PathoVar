@@ -61,17 +61,20 @@ def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 	external_database_results = {}
 	waiting_jobs = []
 	
+	# Path to configuration
+	conf_path = pathovar.INSTALL_DIR
+
 	# Opt-In Databases Job Queue
 	if "comprehensive_antibiotic_resistance_database" in enabled_databases:
 		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDProteinBlastAnnotator
-		card_blast = CARDProteinBlastAnnotator()
+		card_blast = CARDProteinBlastAnnotator(storage_path = os.path.join(conf_path, external_database_conf["comprehensive_antibiotic_resistance_database"]['storage_path']))
 		card_blast.query_with_proteins(ref_prot_fa)
 		waiting_jobs.append(card_blast)
 
 
 	if "drugbank" in enabled_databases:
 		from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator
-		drugbank_blast = DrugBankProteinBlastAnnotator()
+		drugbank_blast = DrugBankProteinBlastAnnotator(storage_path = os.path.join(conf_path, external_database_conf['drugbank']['storage_path']))
 		drugbank_blast.query_with_proteins(ref_prot_fa)
 		waiting_jobs.append(drugbank_blast)
 

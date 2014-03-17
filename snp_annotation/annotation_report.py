@@ -8,16 +8,42 @@ from pathovar.utils import vcf_utils, defline_parser
 from pathovar.utils.fasta_utils import SequenceRecord, MutatedSequenceRecord, MutationException
 from pathovar.web.entrez_eutils import EntrezEUtilsDriverException
 
+GENE_DB = 'gene_comments'
+BIOSYS_DB = "biosystems"
+
 def variant_to_dict(var):
     return {
         "start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
-        "quality": var.QUAL, "depth": var.INFO["DP4"],
+        "call_quality": var.QUAL, "depth": var.INFO["DP4"], "_info": var.INFO, "_format": var.FORMAT,
             "_var_type": var.var_type, 
             "var_type": ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) 
                     else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) 
                         else "deletion"))
                 }
 
+# Translate an entry to it's most common identifiers
+def gene_name(entry):
+    if entry['gene_symbol'] is not None:
+        return entry['gene_symbol']
+    elif entry['gene_ref_tag'] is not None:
+        return entry['gene_ref_tag']
+    else:
+        return entry['gid']
+
+def spans_variant(entry, start, stop):
+    vars_spanned = []
+    for i, variant in enumerate(entry['variants']):
+        for start_pos in start:
+            for stop_pos in stop:
+                if ((variant['start'] - entry['start'] <= start_pos and variant['end'] - entry['start'] >= stop_pos) or
+                (variant['start'] - entry['start'] >= start_pos and variant['end'] - entry['start'] <= stop_pos) or
+                (variant['start'] - entry['start'] <= start_pos and variant['end'] - entry['start'] >= start_pos) or
+                (variant['start'] - entry['start'] <= stop_pos and variant['end'] - entry['start'] >= stop_pos)):
+                    vars_spanned.append(i)
+
+    return False if len(vars_spanned) == 0 else vars_spanned
+
+# Perform Annotation post-processing and report building
 class AnnotationReport(object):
     def __init__(self, vcf_path, annotation_manager, **opts):
         self.vcf_path = vcf_path
@@ -39,7 +65,7 @@ class AnnotationReport(object):
                 org_name = org
                 break
         if org_name == None:
-            raise KeyError("Key %s Not Found" % key)
+            raise KeyError(key)
         return self.data[org_name]['entries'][key]
 
     def __setitem__(self, key, value):
@@ -49,7 +75,7 @@ class AnnotationReport(object):
                 org_name = org
                 break
         if org_name == None:
-            raise KeyError("Key %s Not Found" % key)
+            raise KeyError(key)
         self.data[org_name]['entries'][key] = value
 
     # Simplifies writing out final annotation. This forms a list of all organisms
@@ -59,6 +85,7 @@ class AnnotationReport(object):
         for val in json_data:
             val.pop("chromosome", None)
         json.dump(json_data, open(self.vcf_path[:-3]+'json', 'w'))
+        return self.vcf_path[:-3]+'json'
 
     def get_annotations_from_entrez_mapping(self):
         for org,val in self.annotation_dict.items():
@@ -78,20 +105,29 @@ class AnnotationReport(object):
     def get_entrez_gene_annotations(self):
         if self.verbose: print("Getting Genbank Gene Comment Annotations")
         for gene in self.genes:
+            entry = self[gene]
+            locus_tag = entry['gene_ref_tag']
             try:
-                gene_comments = self.annotation_manager.get_gene_comments(gene)
-                self[gene]['gene_comments'] = gene_comments.to_json_safe_dict()
+                gene_comments = self.annotation_manager.get_gene_comments(locus_tag)
+                self[gene][GENE_DB] = gene_comments.to_json_safe_dict()
             except EntrezEUtilsDriverException, e:
                 if self.verbose: print(str(gene) + " is not in Gene database.")
+
+
 
     def get_entrez_biosystem_pathways(self):
         if self.verbose: print("Getting Genbank BioSystem Pathway Annotations")
         for gene in self.genes:
             try:
-                biosystems = self.annotation_manager.get_biosystems(gene)
-                self[gene]['biosystems'] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
+                if GENE_DB in self[gene]:
+                    gene_db_id = self[gene][GENE_DB]['gene_db_id']
+                    biosystems = self.annotation_manager.get_biosystems(gene_db_id)
+                    self[gene][BIOSYS_DB] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
+                else:
+                    if self.verbose: print(str(gene) + " was not queried. Missing Gene data.")
             except EntrezEUtilsDriverException, e:
                 if self.verbose: print(str(gene) + " is not in BioSystem database.")
+
 
     def generate_reference_protein_fasta_for_variants(self):
         if self.verbose: print("Generating Reference Protein Sequences.")
@@ -99,7 +135,7 @@ class AnnotationReport(object):
         for org_name in self.data:
             for gene in self.data[org_name]["entries"]:
                 entry = self.data[org_name]["entries"][gene]
-                if entry['is_partial'] or entry['is_pseudo']:
+                if entry['is_partial'] or entry['is_pseudo'] or entry['is_rna']:
                     continue
                 if len(entry['amino_acid_sequence']) == 0:
                     if self.verbose: print(str(entry['gid']) + " Protein Sequence Missing")
@@ -122,12 +158,18 @@ class AnnotationReport(object):
             for var in intergenics:
                 if var.start - 500 >= last_pos:
                     cluster = dict()
-                    cluster['start'] = current_cluster[0].start
+                    cluster['start'] = current_cluster[0].start - 250
+                    cluster['upstream_id'] = current_cluster[0].INFO['GENE'].split(":")[1].split("~")[0]
+                    cluster['downstream_id'] = current_cluster[-1].INFO['GENE'].split(":")[1].split("~")[0]
                     cluster['end'] = current_cluster[0].start + 750
                     cluster['variants'] = map(variant_to_dict, current_cluster)
-                    cluster['nucleotide_sequence'] = self.data[org_name]["chromosome"][(cluster['start'] - 250):cluster['end']]
+                    cluster['nucleotide_sequence'] = self.data[org_name]["chromosome"][(cluster['start']):cluster['end']]
                     cluster['is_intergenic'] = True
-                    cluster['title'] = "intergenic-%d_%d" % ((cluster['start'] - 250), cluster['start'])
+                    cluster['is_rna'] = False
+                    cluster['is_partial'] = False
+                    cluster['is_pseudo'] = False
+                    cluster['title'] = "%s-intergenic-%d_%d-%s" % (cluster['upstream_id'], (cluster['start']), cluster['start'], 
+                        cluster['downstream_id'])
                     cluster['gid'] = self.data[org_name]['gid']
                     cluster['accession'] = self.data[org_name]['accession']
                     cluster_mapping[cluster['title']] = cluster
@@ -135,6 +177,25 @@ class AnnotationReport(object):
                     last_pos = var.start
                 current_cluster.append(var)
             self.data[org_name]['entries'].update(cluster_mapping)
+
+
+    def compute_regions_spanning_variants(self):
+        for org_name in self.data:
+            for gene in self.data[org_name]['entries']:
+                entry = self.data[org_name]['entries'][gene]
+                try:
+                    for annot in entry["annotations"].values():
+                        start_positions = annot["start"] if len(annot['start']) > 0 else annot["regions"][0]['from']
+                        end_positions = annot["end"] if len(annot['end']) > 0 else annot["regions"][0]['to']
+                        start_positions = map(lambda x: x * 3, start_positions)
+                        end_positions = map(lambda x: x * 3, end_positions)
+                        spanned = spans_variant(entry, start_positions, end_positions)
+                        annot['spans_variant'] = spanned
+                except KeyError, e:
+                    # Not all Entries have an annotations field.
+                    pass
+
+
 
     ## TODO
     ## Mutation transformation validation fails on sequences with indels, and indices are unreliable
@@ -189,15 +250,9 @@ class AnnotationReport(object):
 
     def consume_generic_result(self, result_obj):
         if self.verbose: print("Consuming %s Results" % result_obj.name)
-        for org_id, org_val in result_obj.items():
-            for gene_id, gene_val in org_val.items():
+        for org_name, org_val in result_obj.items():
+            for gene_name, gene_val in org_val.items():
                 pass
-
-    def write_text_report(self):
-        handle = open(self.vcf_path[:-3] + 'report.tsv', 'w')
-        for org_name, org_data in self.data.items():
-            for entry_gid, entry_data in org_data['entries'].items():
-                report_line = ""
 
 
 

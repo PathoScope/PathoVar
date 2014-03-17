@@ -6,37 +6,12 @@ import sys
 import subprocess
 from copy import copy
 
-from bs4 import BeautifulSoup
+from pathovar.web.ncbi_xml import ET
 
 from pathovar.utils import defline_parser
 
 ## Location of the ncbi-blast+ binaries
 BLAST_BIN_DIR = ""
-
-def make_blastdb(in_file = None, dbtype='nucl'):
-	if in_file == None:
-		raise IOError("makeblastdb -in file not found")
-	args = {"in": in_file, "dbtype": dbtype}
-	subprocess.call(BLAST_BIN_DIR + "makeblastdb" + ' -in {in} -dbtype {dbtype}'.format(**args), shell = True)
-
-def blastn(query, db_name, evalue = 0.001, num_threads = 1, outfmt = 5, outfile = None):
-	if query == None or not os.path.exists(query):
-		raise IOError("blastn -query file not found")
-	if db_name == None or not os.path.exists(db_name):
-		raise IOError("blastn -db_name file not found")
-	if outfile == None:  
-		outfile = query + "_vs_" + db_name + '.blastn'
-	args = {"query" : query, "db" : db_name, "evalue" : evalue, "num_threads": num_threads, "outfmt": outfmt, 'out': outfile}
-
-	call = subprocess.Popen(BLAST_BIN_DIR + "blastn -query {query} -db {db} -evalue {evalue} -num_threads {num_threads} -outfmt {outfmt} -out {out}".format(**args), 
-		stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
-	return call
-
-def main(args):
-	#make_blastdb(args[1])
-	stdout, stderr = blastn(args[1], args[2]).communicate()
-	print(stdout)
-	print(stderr)
 
 NUCLEOTIDE = "nucl"
 PROTEIN = "prot"
@@ -192,17 +167,17 @@ class BlastResultsXMLParser(object):
 	def __init__(self, file_path, **opts):
 		self.file_path = file_path
 		self.opts = opts
-		self.parser = BeautifulSoup(''.join(open(file_path).readlines()))
-		self.queries = [BlastResultsQuery(iteration) for iteration in self.parser.find_all('iteration')]
+		self.parser = ET.fromstring(''.join(open(file_path).readlines()))
+		self.queries = [BlastResultsQuery(iteration) for iteration in self.parser.findall('.//Iteration')]
 		self.queries = {defline_parser(query.query_def)['gene_id']: query for query in self.queries if len(query.hits) > 0}
 
 
 class BlastResultsQuery(object):
 	def __init__(self, parser):
 		#self.parser = parser
-		self.query_def = parser.find("iteration_query-def").get_text()
-		self.__len__ = len(parser.find("iteration_query-len").get_text())
-		self.hits = sorted([BlastResultsHit(h) for h in parser.find_all("hit")], key=lambda x: x.e_value)
+		self.query_def = parser.find(".//Iteration_query-def").text
+		self.__len__ = len(parser.find(".//Iteration_query-len").text)
+		self.hits = sorted([BlastResultsHit(h) for h in parser.findall(".//Hit")], key=lambda x: x.e_value)
 
 	def to_json_safe_dict(self):
 		data_dict = copy(self.__dict__)
@@ -216,9 +191,9 @@ class BlastResultsQuery(object):
 class BlastResultsHit(object):
 	def __init__(self, parser):
 		#self.parser = parser
-		self.hit_def = parser.find('hit_def').get_text()
-		self.__len__ = int(parser.find("hit_len").get_text())
-		self.hsps = [BlastResultsHSP(hsp) for hsp in parser.find_all("hsp")]
+		self.hit_def = parser.find('.//Hit_def').text
+		self.__len__ = int(parser.find(".//Hit_len").text)
+		self.hsps = [BlastResultsHSP(hsp) for hsp in parser.findall(".//Hsp")]
 		self.e_value = min(self.hsps, key = lambda x: x.e_value).e_value
 
 	def to_json_safe_dict(self):
@@ -234,32 +209,32 @@ class BlastResultsHit(object):
 class BlastResultsHSP(object):
 	def __init__(self, parser):
 		#self.parser = parser
-		self.e_value = float(parser.find("hsp_evalue").get_text())
+		self.e_value = float(parser.find(".//Hsp_evalue").text)
 		# Query range
-		self.query_from = int(parser.find("hsp_query-from").get_text())
-		self.query_to = int(parser.find("hsp_query-to").get_text())
+		self.query_from = int(parser.find(".//Hsp_query-from").text)
+		self.query_to = int(parser.find(".//Hsp_query-to").text)
 
 		# Hit range
-		self.hit_from = int(parser.find("hsp_hit-from").get_text())
-		self.hit_to = int(parser.find("hsp_hit-to").get_text())
+		self.hit_from = int(parser.find(".//Hsp_hit-from").text)
+		self.hit_to = int(parser.find(".//Hsp_hit-to").text)
 
 		# Frames (Nucleotide Derived Only)
 		try:
-			self.query_frame = parser.find('hsp_query-frame').get_text()
+			self.query_frame = parser.find('.//Hsp_query-frame').text
 		except ValueError, e:
 			pass
 		try:
-			self.hit_frame = parser.find('hsp_hit-frame').get_text()
+			self.hit_frame = parser.find('.//Hsp_hit-frame').text
 		except ValueError, e:
 			pass
 
 		# Alignment
-		self.identity = parser.find("hsp_identity").get_text()
-		self.gaps = int(parser.find('hsp_gaps').get_text())
-		self.__len__ = int(parser.find('hsp_align-len').get_text())
-		self.qseq = parser.find("hsp_qseq").get_text()
-		self.hseq = parser.find("hsp_hseq").get_text()
-		self.midline = parser.find("hsp_midline").get_text()
+		self.identity = parser.find(".//Hsp_identity").text
+		self.gaps = int(parser.find('.//Hsp_gaps').text)
+		self.__len__ = int(parser.find('.//Hsp_align-len').text)
+		self.qseq = parser.find(".//Hsp_qseq").text
+		self.hseq = parser.find(".//Hsp_hseq").text
+		self.midline = parser.find(".//Hsp_midline").text
 
 	def to_json_safe_dict(self):
 		return self.__dict__
@@ -274,5 +249,4 @@ class BlastDriverException(Exception):
 
 
 if __name__ == '__main__':
-	
 	main(sys.argv)

@@ -14,7 +14,7 @@ HEADINGS = [
 ]
 
 class GenBankGeneFile(object):
-    CACHE_SCHEMA_VERSION = '0.3.5'
+    CACHE_SCHEMA_VERSION = '0.3.8'
     def __init__(self, data, **opts):
         self.parser = None
         self.opts = opts
@@ -22,8 +22,8 @@ class GenBankGeneFile(object):
         self.gid = None
         self.gene_db_id = None
         self.gene_ref_tag = None
+        self.gene_prot_name = None
         self.gene_symbol = None
-        self.org_name = None
         self.comments = None
         self.pathways = []
         self.go_terms = defaultdict(list)
@@ -44,7 +44,9 @@ class GenBankGeneFile(object):
         self.gene_ref_tag = self.parser.find(".//Gene-ref_locus-tag")
         if self.gene_ref_tag is not None:
             self.gene_ref_tag = to_text_strip(self.gene_ref_tag)
-        
+        self.gene_prot_name = self.parser.find(".//Prot-ref_name_E")
+        if self.gene_prot_name is not None:
+            self.gene_prot_name = to_text_strip(self.gene_prot_name)
         self.comments = [GenBankGeneFileComment(x,self, xml=True) for x in self.parser.findall('.//Gene-commentary_heading/..') 
             if to_text_strip(x) in HEADINGS]
         for comment in self.comments:
@@ -56,6 +58,7 @@ class GenBankGeneFile(object):
         self.gene_db_id = json_dict['gene_db_id']
         self.gene_symbol = json_dict["gene_symbol"]
         self.gene_ref_tag =  json_dict["gene_ref_tag"]
+        self.gene_prot_name = json_dict["gene_prot_name"]
         self.pathways = [Pathway(**data) for data in json_dict["pathways"]]
         self.go_terms = {category:[GOTerm(**data) for data in terms] for category, terms in  json_dict["go_terms"].items()}
 
@@ -155,7 +158,7 @@ class GOTerm(object):
         return rep
 
 class GenBankGeneToBioSystem(object):
-    CACHE_SCHEMA_VERSION = "0.2b"
+    CACHE_SCHEMA_VERSION = "0.3"
 
     def __init__(self, data, **opts):
         self.parser = None
@@ -186,7 +189,7 @@ class GenBankGeneToBioSystem(object):
 
 
 class GenBankBioSystemFile(object):
-    CACHE_SCHEMA_VERSION = "0.1b"
+    CACHE_SCHEMA_VERSION = "0.2b"
     def __init__(self, data, **opts):
         self.parser = None
         self.opts = opts
@@ -204,12 +207,12 @@ class GenBankBioSystemFile(object):
 
     def _parse_xml(self, data):
         self.parser = ET.fromstring(data)
-        self.system_names = [to_text_strip(name) for name in self.parser.findall(".//System_names_e")]
+        self.system_names = [to_text_strip(name) for name in self.parser.findall(".//System_names_E")]
         self.system_id = self.parser.find(".//Sys-id_bsid").text
         self.system_description = self.parser.find(".//System_description").text
         self.external_url = self.parser.find(".//System_recordurl").text
         self.external_accession = self.parser.find(".//System_externalaccn").text
-        self.system_categories = [to_text_strip(cat) for cat  in self.parser.findall(".//System_category_e")]
+        self.system_categories = [to_text_strip(cat) for cat  in self.parser.findall(".//System_category_E")]
 
     def to_json_safe_dict(self):
         data_dict = self.__dict__

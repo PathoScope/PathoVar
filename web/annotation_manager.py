@@ -47,35 +47,35 @@ class EntrezAnnotationManager(object):
             self.genome_annotations[gid] = data
         return data
 
-    def get_gene_comments(self, gid):
+    def get_gene_comments(self, locus_tag):
         data = None
-        if gid in self.gene_annotations:
-            data = self.gene_annotations[gid]
+        if locus_tag in self.gene_annotations:
+            data = self.gene_annotations[locus_tag]
         elif self.cache_manager:
             try:
-                data = GenBankGeneFile(self.cache_manager.load_from_cache(gid, "gene"), verbose = self.verbose, json=True)
-                self.gene_annotations[gid] = data
+                data = GenBankGeneFile(self.cache_manager.load_from_cache(locus_tag, "gene"), verbose = self.verbose, json=True)
+                self.gene_annotations[locus_tag] = data
             except CachedObjectMissingOrOutdatedException, e:
-                data = self.find_gene_comments_by_gene_id(gid, xml=True, verbose = self.verbose)
-                self.gene_annotations[gid] = data
-                self.cache_manager.write_to_cache(data, gid, "gene")
+                data = self.find_gene_comments_by_locus_tag(locus_tag, xml=True, verbose = self.verbose)
+                self.gene_annotations[locus_tag] = data
+                self.cache_manager.write_to_cache(data, locus_tag, "gene")
         else: 
             data = self.find_annotations_by_gene_id(gid, xml=True, verbose = self.verbose)
             self.gene_annotations[gid] = data
         return data
 
-    def get_biosystems(self, gid):
+    def get_biosystems(self, gene_db_id):
         biosystem_ids = None
         if self.cache_manager:
             try:
-                gene_to_biosystem = GenBankGeneToBioSystem(self.cache_manager.load_from_cache(gid, "gene-biosystem"), json=True)
+                gene_to_biosystem = GenBankGeneToBioSystem(self.cache_manager.load_from_cache(gene_db_id, "gene-biosystem"), json=True)
                 biosystem_ids = gene_to_biosystem.biosystem_ids
             except CachedObjectMissingOrOutdatedException:
-                gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_id(gid), gene_id = gid, xml = True)
-                self.cache_manager.write_to_cache(gene_to_biosystem, gid, "gene-biosystem")
+                gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_db_id(gene_db_id), gene_id = gene_db_id, xml = True)
+                self.cache_manager.write_to_cache(gene_to_biosystem, gene_db_id, "gene-biosystem")
                 biosystem_ids = gene_to_biosystem.biosystem_ids
         else:
-            gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_id(gid), gene_id = gid, xml = True)
+            gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_db_id(gene_db_id), gene_id = gene_db_id, xml = True)
             biosystem_ids = gene_to_biosystem.biosystem_ids
         biosystems = []
         for bsid in biosystem_ids:
@@ -134,9 +134,8 @@ class EntrezAnnotationManager(object):
         result = self.entrez_handle.find_protein_by_gene_id(gene_id, form = 'genbank', mode = 'xml')
         return GenBankFeatureFile( result, **opts)
 
-    def find_gene_comments_by_gene_id(self, gene_id, **opts):
-        gene_id = str(gene_id)
-        result = self.entrez_handle.find_gene_by_gene_id(gene_id, form = 'xml')
+    def find_gene_comments_by_locus_tag(self, locus_tag, **opts):
+        result = self.entrez_handle.find_gene_by_locus_tag(locus_tag)
         return GenBankGeneFile(result, **opts)
 
 class AnnotationCacheManagerBase(object):
@@ -183,7 +182,12 @@ class JSONAnnotationCacheManager(object):
         else:
             raise Exception("Annotation Data Type Missing")
         if os.path.exists(cache_file):
-            json_dict = json.load(open(cache_file))
+            json_dict = None
+            try:
+                json_dict = json.load(open(cache_file))
+            except ValueError, e:
+                os.remove(cache_file)
+                raise CachedObjectMissingOrOutdatedException()
             if "schema_version" not in json_dict or (json_dict['schema_version'] != schema_version):
                 #if self.verbose: print("Cache Obsolete")
                 raise CachedObjectMissingOrOutdatedException()
@@ -205,7 +209,14 @@ class JSONAnnotationCacheManager(object):
             cache_file += JSONAnnotationCacheManager.GENE_BIOSYSTEM_DATA
         else:
             raise Exception("Annotation Data Type Missing")
-        json.dump(data.to_json_safe_dict(), open(cache_file, 'w'))
+        try:
+            json.dump(data.to_json_safe_dict(), open(cache_file, 'w'))
+        except TypeError, e:
+            try:
+                if(self.verbose): print("Cache Write Error", e)
+                os.remove(cache_file)
+            except OSError, os_err:
+                if(self.verbose): print(os_err)
 
 
 class CachedObjectMissingOrOutdatedException(Exception):

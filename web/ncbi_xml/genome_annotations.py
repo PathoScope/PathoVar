@@ -6,14 +6,13 @@ from collections import OrderedDict, defaultdict
 
 from pathovar.utils.fasta_utils import SequenceRecord
 from pathovar.web import entrez_eutils
-from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_value
-#from test_xml import ET, to_text, to_text_strip, to_int, to_attr_value
+from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_value, try_tag, take_def
 
 ## GenBankFeatureFile
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
-    CACHE_SCHEMA_VERSION = '0.3.7e'
+    CACHE_SCHEMA_VERSION = '0.3.9d'
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
@@ -26,7 +25,9 @@ class GenBankFeatureFile(object):
         self.org_name = None
         self.genetic_code = None
         self.entries = {}
+        self.genome_entry = None
         self.features = []
+        self.sorted_genes = []
         self.last_entry_ind = 0
         if 'xml' in opts:
             self._parse_xml(data)
@@ -63,23 +64,38 @@ class GenBankFeatureFile(object):
 
         if self.verbose: print("Gathering Entries and Features")
         self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self, xml = True), self.parser.findall(".//Seq-entry")) }
+        self.genome_entry = self.entries[self.gid]
+        #self.features = map(lambda x: GenBankFeature(x, self), self.parser.findall(".//Seq-feat"))
         self.features = map(lambda x: GenBankFeature(x, self), self.parser.findall(".//Seq-feat"))
-        
+
         # Features are subsets of Entries. It would be a good idea to compress them to a single entity
         # later. Entries capture finer resolution details about a particular gene
         for feature in self.features:
              if feature.gid in self.entries:
-                 feature.title = self.entries[feature.gid].title
+                 entry = self.entries[feature.gid]
+                 feature.title = entry.title
+                 entry.strand = feature.strand
         
-        # Keep only features that are not complete genomes
-        self.features = [feature for feature in self.features if "complete genome" not in feature.title]
+        genome_level_features = {}
+        sequence_level_features = []
+        
+        print("Mapping Features Over Genomic Position")
+        for feat in self.features:
+            if "complete genome" in feat.title:
+                if feat.start not in genome_level_features:
+                    genome_level_features[feat.start] = feat
+                else: 
+                    genome_level_features[feat.start].merge_features(feat)
+            else:
+                sequence_level_features.append(feat)
         
         # Each feature occurs multiple times in the file, redundant with its multiple regions. The complete
         # genomic span is the largest span. This works for single-span entities. 
         
         if self.verbose: print("Computing Genomic Coordinates")
         feature_dict = {}
-        for feat in self.features:
+        for feat in sequence_level_features:
+            if feat.gid == self.gid: continue
             if feat.starts:
                 if feat.gid not in feature_dict:
                     feature_dict[feat.gid] = feat
@@ -88,17 +104,38 @@ class GenBankFeatureFile(object):
                         feature_dict[feat.gid] = feat
                     if self.mol_type == 'nucl' and feat.end > len(self.chromosome):
                         raise GenBankFileChromosomeLengthMismatch("%r exceeds chromosome size" % feat)
-        self.features = feature_dict.values()
         
+        sequence_level_features = feature_dict.values()
+        by_start = {f.start: f for f in sequence_level_features}
+        
+        final_features = {}
+        for pos in genome_level_features:
+            try:
+                final_features[by_start[pos].gid] = genome_level_features[pos]
+                final_features[by_start[pos].gid].gid = by_start[pos].gid
+                genome_level_features[pos].gid = by_start[pos].gid
+            except KeyError, e:
+                # Using a compound of RNA type + locus tag in place of absent gid
+                genome_level_features[pos].title = genome_level_features[pos].gene_ref_tag
+                final_features[genome_level_features[pos].title] = genome_level_features[pos]
+                final_features[genome_level_features[pos].title].gid = genome_level_features[pos].title
+
+        self.features = final_features.values()
+
         # Using the genomic position data just computed, update coordinate information for the 
         # related entries
         for feat in self.features:
-            entry = self.entries[feat.gid]
-            entry.update_genome_position(feat)
+            try:
+                entry = self.entries[feat.gid]
+                entry.update_genome_position(feat)
+            except:
+                entry = feat.upgrade_to_entry()
+                self.entries[entry.gid] = entry
+
 
         # Remove whole-reference entry
         self.entries.pop(self.gid)
-
+        self.sorted_genes = sorted([gene for gid, gene in self.entries.items()], key=lambda x: x.start)
 
     def _from_json(self, json_dict):
         timer = time()
@@ -108,7 +145,8 @@ class GenBankFeatureFile(object):
         self.chromosome = json_dict['chromosome']
         self.genetic_code = json_dict.get('genetic_code', None)
         self.entries = {k:GenBankSeqEntry(v, self, **self.opts) for k,v in json_dict['entries'].items()}
-
+        self.sorted_genes = json_dict["sorted_genes"]
+        self.sorted_genes = [self.entries[gid] for gid in self.sorted_genes]
         if self.verbose: print("Loading from JSON Complete (%rs)" % (time() - timer))
 
 
@@ -120,14 +158,14 @@ class GenBankFeatureFile(object):
         data_dict['schema_version'] = GenBankFeatureFile.CACHE_SCHEMA_VERSION
         data_dict["name"] = self.org_name
         data_dict['genetic_code'] = self.genetic_code
-        data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if "complete genome" not in v.title}
+        data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if v.title or  "complete genome" not in v.title}
+        data_dict['sorted_genes'] = [x.gid for x in self.sorted_genes]
         return(data_dict)
 
-    def locate_snp_site(self, snp, reset=False):
+    def locate_snp_site(self, snp, reset=True):
         if reset:
             self.last_entry_ind = 0
-        entries = self.entries.values()
-        for ind, entry in enumerate(entries[self.last_entry_ind:]):
+        for ind, entry in enumerate(self.sorted_genes[self.last_entry_ind:]):
             #if self.verbose: print(entry.start, entry.end)
             #if self.verbose: print("check %d >= %d and %d <= %d" % (snp_loc, entry.start, snp_loc, entry.end))
             if (snp.start >= entry.start and snp.start <= entry.end) or (snp.end >= entry.end and snp.start <= entry.end) \
@@ -135,8 +173,15 @@ class GenBankFeatureFile(object):
                 #if self.verbose: print("SNP Location %r mapped within %r" % ([snp.start, snp.end], entry))
                 self.last_entry_ind += ind
                 return entry
+            if snp.start < entry.start and snp.end < entry.start:
+                # return intergenic relative to this entry and the previous one
+                upstream_id = None
+                downstream_id = entry.gid
+                if(self.last_entry_ind + ind != 0):
+                    upstream_id = self.sorted_genes[ind - 1].gid
+                return IntergenicEntry(upstream_id, downstream_id)
 
-        return IntergenicEntry()
+        return IntergenicEntry(self.sorted_genes[-1].gid)
 
     def __repr__(self):
         rep = "GenBankFile(" + self.mol_type + "|" + ', '.join(map(repr, self.entries)) + ")"
@@ -146,13 +191,16 @@ class GenBankFeatureFile(object):
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the substructure of a GenBank flat file related to a single sequence feature
 class GenBankFeature(object):
-    def __init__(self, element, owner):
-        self.element = element
-        self.gid = to_text_strip(element.find('.//Seq-id_gi'))
+    def __init__(self, parser, owner):
+        self.parser = parser
+        self.owner = owner
+        self.gid = to_text_strip(parser.find('.//Seq-id_gi'))
         # Some features, especially in complex organisms, will have multi-part features. 
         # Capture all of that data
-        self.starts = map(to_int, self.element.findall('.//Seq-interval_from'))
-        self.ends = map(to_int, self.element.findall('.//Seq-interval_to'))
+        self.starts = map(to_int, self.parser.findall('.//Seq-interval_from'))
+        self.ends = map(to_int, self.parser.findall('.//Seq-interval_to'))
+
+        self.title = None
 
         # and set the extrema to the global start and stop
         self.start = None
@@ -164,12 +212,63 @@ class GenBankFeature(object):
         else:
             pass
 
-        # Likely to be empty
-        self.dbxref = element.findall('.//Dbtag_db')
-        self.dbxref_type = map(lambda x: x.find(".//Dbtag_db"), self.dbxref)
-        self.dbxref_id = map(lambda x: x.find(".//Object-id_id"), self.dbxref)
+        self.gene_symbol = self.parser.find(".//Gene-ref_locus")
+        if self.gene_symbol is not None:
+            self.gene_symbol = to_text_strip(self.gene_symbol)
+        self.gene_ref_tag = self.parser.find(".//Gene-ref_locus-tag")
+        if self.gene_ref_tag is not None:
+            self.gene_ref_tag = to_text_strip(self.gene_ref_tag)
+        self.gene_prot_name = self.parser.find(".//Prot-ref_name_E")
 
-        self.title = None
+        self.strand = self.parser.find('.//Na-strand')
+        if self.strand is not None:
+            self.strand = self.strand.get('value')
+            assert self.strand != ''
+        else:
+            self.strand = "?"
+
+        self.is_rna = self.parser.find(".//RNA-ref")
+        self.rna_type = None
+        self.rna_desc = None
+        if self.is_rna is not None:
+            self.rna_type = to_attr_value(self.is_rna.find(".//RNA-ref_type"), 'value')
+            self.rna_desc = try_tag(self.parser.find(".//RNA-ref_ext_name"), to_text)
+            if self.rna_desc is None:
+                self.rna_desc = try_tag(self.parser.find(".//Trna-ext_aa_ncbieaa"), to_text)
+            if self.rna_desc is None:
+                self.rna_desc = "miscRNA"
+
+        self.is_rna = True if self.is_rna is not None else False
+
+        #self.__dict__.pop('parser')
+    
+    def merge_features(self, other):
+        merge_dict = dict()
+        for key in self.__dict__:
+           merge_dict[key] = take_def(key, self.__dict__, other.__dict__)
+        self.__dict__ = merge_dict
+
+
+    def upgrade_to_entry(self):
+        upgrade_dict = dict()
+        upgrade_dict["start"] = self.start
+        upgrade_dict["end"] = self.end
+        upgrade_dict["starts"] = self.starts
+        upgrade_dict["ends"] = self.ends
+        upgrade_dict["strand"] = self.strand
+        upgrade_dict["gene_symbol"] = self.gene_symbol
+        upgrade_dict["gene_ref_tag"] = self.gene_ref_tag
+        upgrade_dict["gene_prot_name"] = self.gene_prot_name
+        upgrade_dict["gid"] = self.gid
+        upgrade_dict["accession"] = self.gid
+        upgrade_dict["title"] = self.rna_desc
+        upgrade_dict["annotations"] = {}
+        upgrade_dict["comments"] = []
+        upgrade_dict["amino_acid_sequence"] = None
+        upgrade_dict["nucleotide_sequence"] = self.owner.chromosome[self.start:self.end] if (self.owner.mol_type == 'nucl') else None
+        upgrade_dict["is_rna"] = self.is_rna
+        return GenBankSeqEntry(upgrade_dict, self.owner, json=True)
+
 
     def __repr__(self):
         rep = "GenBankFeature(gi|%(gid)s, %(start)r, %(end)r, %(title)s)" % self.__dict__
@@ -186,6 +285,10 @@ class GenBankSeqEntry(object):
         self.gid = None
         self.accession = None
         
+        self.gene_ref_tag = None
+        self.gene_symbol = None
+        self.protein_name = None
+
         # The coordinates in the seq-entry itself are relative to their own start and stop points. 
         # The genomic coordinates must be inferred from the genomic seq-feat tags
         self.starts = None
@@ -197,6 +300,7 @@ class GenBankSeqEntry(object):
         
         self.is_partial = None
         self.is_pseudo = None
+        self.is_rna = False
 
         self.amino_acid_sequence = None
         # Prune later once starts and ends are set
@@ -220,6 +324,7 @@ class GenBankSeqEntry(object):
         self.parser = parser
 
         self.gid = to_text_strip(parser.find('.//Seq-id_gi'))
+
         self.accession = to_text_strip(parser.find('.//Textseq-id_accession'))
         
         self.strand = self.parser.find('.//Na-strand')
@@ -250,11 +355,6 @@ class GenBankSeqEntry(object):
         self.annotations = {ann.name: ann for ann in map(lambda d: GenBankAnnotation(d, xml=True, verbose=self.owner.verbose), parser.findall(".//Seq-feat"))}
 
         self.comments = map(to_text_strip, parser.findall('.//Seq-feat_comment'))
-        
-        #self._id = parser.findall('bioseq_id')
-        #self._desc = parser.findall("bioseq_descr")
-        #self._inst = parser.findall("bioseq_inst")
-        #self._annot = parser.findall("bioseq_annot")
 
 
     def _from_json(self, json_dict):
@@ -276,6 +376,13 @@ class GenBankSeqEntry(object):
         self.is_partial = json_dict.get('is_partial', False)
         self.is_pseudo = json_dict.get('is_pseudo', False)
 
+        self.gene_symbol = json_dict["gene_symbol"]
+        self.gene_ref_tag = json_dict["gene_ref_tag"]
+        self.gene_prot_name = json_dict["gene_prot_name"]
+
+        # Only ever set through an upgrade from Feature, which is passed by dictionary
+        self.is_rna = json_dict["is_rna"]
+
         self.annotations = {k:GenBankAnnotation(v, json=True) for k,v in json_dict['annotations'].items()}
 
     def update_genome_position(self, feature):
@@ -283,6 +390,10 @@ class GenBankSeqEntry(object):
         self.ends   = feature.ends  
         self.start  = feature.start 
         self.end    = feature.end
+        self.gene_symbol = feature.gene_symbol
+        self.gene_ref_tag = feature.gene_ref_tag
+        self.gene_prot_name = feature.gene_prot_name
+
         if self.owner.mol_type == 'nucl':
             self.nucleotide_sequence = self.owner.chromosome[self.start:self.end]
 
@@ -317,11 +428,12 @@ class GenBankSeqEntry(object):
         return data_dict
 
 class IntergenicEntry(object):
-    def __init__(self):
-        pass
+    def __init__(self, upstream = None, downstream = None):
+        self.upstream_id = upstream
+        self.downstream_id = downstream
 
     def to_info_field(self):
-        return "(Intergenic)"
+        return "(Intergenic:%s~%s)" % (self.upstream_id, self.downstream_id)
 
 class AnnotationExtension(OrderedDict):
     def __init__(self,*args, **kwargs):
@@ -455,6 +567,7 @@ if __name__ == '__main__':
     data = ''.join(open(file_name).readlines())
     print("Parsing %s" % file_name)
     gbf = GenBankFeatureFile(data, mol_type = 'nucl' , xml = True, verbose = True)
+    print("Data stored in local variable `gbf`")
     IPython.embed()
 
 
