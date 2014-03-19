@@ -39,7 +39,7 @@ def main(args):
 
 	anno_vcf = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
-	eff_data = run_snpeff(args, anno_vcf, annotation_manager_driver, **opts):
+	eff_data = run_snpeff(args, anno_vcf, annotation_manager_driver, **opts)
 
 	annotation_report_driver.to_json_file()
 
