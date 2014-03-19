@@ -177,6 +177,7 @@ class FilterByComparisonVCF(VCFFilterBase):
     def filter_name(self):
         mode = "-inters-" if self.intersection else "-diff-"
         return self.name + mode + '-'.join(self.reference_vcfs)
+
 class FilterByChromMatch(VCFFilterBase):
     '''Filter a VCF File by regular expresion match over its CHROM column'''
     name = "regmatch"
@@ -190,7 +191,6 @@ class FilterByChromMatch(VCFFilterBase):
 
     def __call__(self, record):
         if re.search(self.pattern, record.CHROM):
-            print(re.search(self.pattern, record.CHROM).start(), record.CHROM)
             return record
 
     def filter_name(self):
@@ -198,6 +198,7 @@ class FilterByChromMatch(VCFFilterBase):
 
     def __repr__(self):
         return self.filter_name()
+
 class FilterAltSubstX(VCFFilterBase):
     '''Remove variants whose only alternate allele is an X'''
     name = "badalt-X"
@@ -224,6 +225,7 @@ class FilterAltSubstX(VCFFilterBase):
 
     def __repr__(self):
         return self.filter_name()
+
 class FilterByAltCallDepth(VCFFilterBase):
     '''Filter a VCF File by limiting variants to only those with at least X% Alt calls'''
     
@@ -232,7 +234,7 @@ class FilterByAltCallDepth(VCFFilterBase):
     @classmethod
     def customize_parser(self, parser):
         parser.add_argument('--alt-depth', type=float, default=0.4, 
-            help="The minimum percentage of all calls for a locus that must be an alternative allele")
+            help="The minimum percentage of all calls for a locus that must be an alternative allele (MAF)")
     
     def __init__(self, args):
         self.alt_depth = args.alt_depth
@@ -247,6 +249,7 @@ class FilterByAltCallDepth(VCFFilterBase):
 
         if alt_reads / float(total_reads) >= self.alt_depth:
             return record
+
 class FilterByReadDepth(VCFFilterBase):
     name = 'call-depth'
     @classmethod
@@ -265,8 +268,43 @@ class FilterByReadDepth(VCFFilterBase):
         if record.INFO['DP'] >= self.min_depth:
             return record
 
+class FilterByCallQuality(VCFFilterBase):
+    name = 'call-qual'
 
-EXPOSED_FILTERS = [FilterByComparisonVCF,FilterByAltCallDepth,FilterByReadDepth,]
+    @classmethod
+    def customize_parser(self, parser):
+        parser.add_argument('--min-qual', type=float, default=20, 
+            help="The minimum Phred scale Quality score of a variant call")
+
+    def __init__(self, args):
+        self.min_qual = args.min_qual
+
+    def filter_name(self):
+        return "%s-%f" % (self.name, self.min_qual)
+
+    def __call__(self, record):
+        if record.QUAL >= self.min_qual:
+            return record
+
+class FilterByMappingQuality(VCFFilterBase):
+    name = 'map-qual'
+
+    @classmethod
+    def customize_parser(self, parser):
+        parser.add_argument('--min-mq', type=float, default=20, 
+            help="The minimum Phred scale Quality score of a read mapping for a variant call")
+
+    def __init__(self, args):
+        self.min_qual = args.min_mq
+
+    def filter_name(self):
+        return "%s-%f" % (self.name, self.min_qual)
+
+    def __call__(self, record):
+        if record.INFO['MQ'] >= self.min_qual:
+            return record
+
+EXPOSED_FILTERS = [FilterByComparisonVCF,FilterByAltCallDepth,FilterByReadDepth,FilterByCallQuality,FilterByMappingQuality,]
 def main():
     import argparse
     arg_parser = argparse.ArgumentParser(prog='filter-vcf')

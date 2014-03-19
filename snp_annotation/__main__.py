@@ -8,7 +8,7 @@ import vcf
 
 import pathovar
 from pathovar import utils
-from pathovar.snp_annotation import locate_variant, annotation_report
+from pathovar.snp_annotation import locate_variant, annotation_report, snpeff_driver
 from pathovar.web import annotation_manager
 
 argparser = argparse.ArgumentParser(prog = "snp_annotation")
@@ -50,6 +50,11 @@ def find_variant_locations(vcf_file, annotation_manager_driver, **opts):
 	anno_vcf = variant_locator_driver.write_annotated_vcf()
 	return anno_vcf
 
+def run_snpeff(args, anno_vcf, annotation_manager_driver, **opts):
+	eff_data = snpeff_driver.main(args.snpeff_path, anno_vcf, tempDir = None, 
+		gidMap = annotation_manager_driver.genome_mutual_gid_to_accesion(), **opts)
+
+	return eff_data
 
 def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)

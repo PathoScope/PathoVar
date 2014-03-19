@@ -3,59 +3,30 @@ from collections import defaultdict
 
 from pathovar.utils import defline_parser
 
-## SpeciesExtractNameSAMParser
-# 
-class SpeciesExtractNameSAMParser(object):
-    def __init__(self, file_name):
-        self.file_name = file_name
-        self.species = defaultdict(list)
-        self.line_buffer = []
-
-    def parse_file(self):
-        handle = open(self.file_name, 'rb')
-        lines = handle.readlines()
-        for line in lines:
-            #print("LINE: " + line)
-            if re.match(r"^##", line):
-                self.buffer.append(line)
-            if re.match(r"^@", line):
-                self.buffer.append(line)
-            fields = line.split('\t')
-            #print("FIELDS: " + str(fields))
-            #raw_input("NEXT?")
-            self.species[fields[2]].append(fields)
-        return self.species
-
-    def filter_species(self):
-        species_data = self.species.items()
-        species_data.sort(key=lambda x:len(x[1]), reverse=True)
-        return species_data[:5]
-
-class SAMParser(object):
+class SamParser(object):
     def __init__(self, file_name, out= None, **opts):
         self.file_name = file_name
         self.opts = opts
         if out != None:
             self.opts['out'] = out
-        self.headers = []
         self.reference_headers = {}
         self.meta_headers = []
         self.reads = defaultdict(list)
         self.line = None
+        self.parse_file()
 
     def parse_file(self):
         with open(self.file_name, 'r') as handle:
             for line in handle:
                 self.line = line
                 if "@SQ" in line:
-                    result = SAMHeader.parse(line)
-                    self.headers.append(result)
-                    self.reference_headers[result.definition] = result
+                    result = SamHeader.parse(line)
+                    self.reference_headers[result.definition.split(":")[1]] = result
                 elif "@" in line[0]:
-                    result = SAMHeader.parse(line)
+                    result = SamHeader.parse(line)
                     self.meta_headers.append(result)
                 else: 
-                    result = SAMRead.parse(line)
+                    result = SamRead.parse(line)
                     self.reads[result.rname].append(result)
 
     def alter_reference(self, target, replacement):
@@ -79,9 +50,16 @@ class SAMParser(object):
         self.reference_headers = new_headers
         self.reads = new_reads
 
-    def remove_reference(self, target):
-        new_headers = {name:header for name, header in self.reference_headers.items() if not re.search(target, name)}
-        new_reads = {name:reads for name, reads in self.reads.items() if not re.search(target,name)}
+    def remove_reference(self, target, keep = False):
+        new_headers = None
+        new_reads = None
+        if not keep:
+            new_headers = {name:header for name, header in self.reference_headers.items() if not re.search(target, name)}
+            new_reads = {name:reads for name, reads in self.reads.items() if not re.search(target,name)}
+        else: 
+            new_headers = {name:header for name, header in self.reference_headers.items() if re.search(target, name)}
+            new_reads = {name:reads for name, reads in self.reads.items() if re.search(target,name)}
+
         self.meta_headers[0].rest = ["SO:unsorted"]
         self.reference_headers = new_headers
         self.reads = new_reads
@@ -102,18 +80,26 @@ class SAMParser(object):
                 for read in self.reads[rname]:
                     handle.write(str(read))
 
-class SAMHeader(object):
+class SamHeader(object):
     @classmethod
     def parse(self, line):
         fields = line.split('\t')
-        result = SAMHeader(fields)
+        result = SamHeader(fields)
         return result
 
     def __init__(self, fields):
         self.tag = fields[0]
         self.definition = fields[1]
+        self.fields = {}
         if len(fields) > 2:
             self.rest = fields[2:]
+            # Capture fields without caring waht they are.
+            for field in fields[2:]:
+                fname, fval = field.split(":")
+                self.fields[fname] = fval.replace('\n','')
+                # Whitelisted Integer Fields
+                if fname in ['LN']:
+                    self.fields[fname] = int(self.fields[fname])
         else: 
             self.rest = []
 
@@ -122,26 +108,26 @@ class SAMHeader(object):
         rep = "{tag}\t{definition}\t{rest}".format(**{"tag": self.tag, "definition": self.definition, "rest": rest})
         return rep
 
-class SAMRead(object):
+class SamRead(object):
     @classmethod
     def parse(self, line):
         fields = line.split("\t")
         aln =  (fields[11:])
         fields = fields[:11]
         fields.append(aln)
-        result = SAMRead(*fields)
+        result = SamRead(*fields)
         return result
 
     def __init__(self, qname, flag, rname, pos, mapq, cigar, rnext, pnext, tlen, seq, qual, aln):
         self.qname = qname
         self.flag = flag
         self.rname = rname
-        self.pos = pos
-        self.mapq = mapq
+        self.pos = int(pos)
+        self.mapq = float(mapq)
         self.cigar = cigar
         self.rnext = rnext
         self.pnext = pnext
-        self.tlen = tlen
+        self.tlen = int(tlen)
         self.seq = seq
         self.qual = qual
         self.aln = '\t'.join(aln)
