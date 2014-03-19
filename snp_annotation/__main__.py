@@ -18,6 +18,8 @@ argparser.add_argument("--test", action = "store_true", required = False)
 argparser.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
 argparser.add_argument('--min-depth', type=int, default=5, help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
 argparser.add_argument('--alt-depth', type=float, default=0.4, help="The MAF threshold, under which variants are ignored [default:0.4]")
+argparser.add_argument('--snpeff-path', action = 'store', default = None, required = False, help = "Path to the snpEff.jar and .config files")
+argparser.add_argument('--blast-path', action = 'store', default= None, required = False, help = 'Path to the NCBI BLAST executables.')
 
 def main(args):
 	#if args.verbose: print(args)
@@ -37,6 +39,8 @@ def main(args):
 
 	anno_vcf = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
+	eff_data = run_snpeff(args, anno_vcf, annotation_manager_driver, **opts):
+
 	annotation_report_driver.to_json_file()
 
 	print("Annotation Complete (%r sec)" % (time() - timer))
@@ -51,10 +55,12 @@ def find_variant_locations(vcf_file, annotation_manager_driver, **opts):
 	return anno_vcf
 
 def run_snpeff(args, anno_vcf, annotation_manager_driver, **opts):
-	eff_data = snpeff_driver.main(args.snpeff_path, anno_vcf, tempDir = None, 
-		gidMap = annotation_manager_driver.genome_mutual_gid_to_accesion(), **opts)
-
-	return eff_data
+	try:
+		eff_data = snpeff_driver.main(args.snpeff_path, anno_vcf, tempDir = None, 
+			gidMap = annotation_manager_driver.genome_mutual_gid_to_accesion(), **opts)
+		return eff_data
+	except Exception, e:
+		print(e)
 
 def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)
@@ -68,33 +74,35 @@ def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 	
 	# Path to configuration
 	conf_path = pathovar.INSTALL_DIR
+	try:
+		# Opt-In Databases Job Queue
+		if "comprehensive_antibiotic_resistance_database" in enabled_databases:
+			from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDProteinBlastAnnotator
+			card_blast = CARDProteinBlastAnnotator(storage_path = os.path.join(conf_path, external_database_conf["comprehensive_antibiotic_resistance_database"]['storage_path']))
+			card_blast.query_with_proteins(ref_prot_fa)
+			waiting_jobs.append(card_blast)
 
-	# Opt-In Databases Job Queue
-	if "comprehensive_antibiotic_resistance_database" in enabled_databases:
-		from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDProteinBlastAnnotator
-		card_blast = CARDProteinBlastAnnotator(storage_path = os.path.join(conf_path, external_database_conf["comprehensive_antibiotic_resistance_database"]['storage_path']))
-		card_blast.query_with_proteins(ref_prot_fa)
-		waiting_jobs.append(card_blast)
 
+		if "drugbank" in enabled_databases:
+			from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator
+			drugbank_blast = DrugBankProteinBlastAnnotator(storage_path = os.path.join(conf_path, external_database_conf['drugbank']['storage_path']))
+			drugbank_blast.query_with_proteins(ref_prot_fa)
+			waiting_jobs.append(drugbank_blast)
 
-	if "drugbank" in enabled_databases:
-		from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator
-		drugbank_blast = DrugBankProteinBlastAnnotator(storage_path = os.path.join(conf_path, external_database_conf['drugbank']['storage_path']))
-		drugbank_blast.query_with_proteins(ref_prot_fa)
-		waiting_jobs.append(drugbank_blast)
+		annotation_report_driver.get_entrez_gene_annotations()
+		annotation_report_driver.get_entrez_biosystem_pathways()
+		annotation_report_driver.merge_intergenic_record_chunks()
 
-	annotation_report_driver.get_entrez_gene_annotations()
-	annotation_report_driver.get_entrez_biosystem_pathways()
-	annotation_report_driver.merge_intergenic_record_chunks()
+		# Block while annotations run
+		for job in waiting_jobs:
+			external_database_results[job.collection_name] = job.wait_for_results()
 
-	# Block while annotations run
-	for job in waiting_jobs:
-		external_database_results[job.collection_name] = job.wait_for_results()
-
-	# Consume the completed Blast searches 
-	for external_database in external_database_results:
-		for category in external_database_results[external_database]:
-			annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
+		# Consume the completed Blast searches 
+		for external_database in external_database_results:
+			for category in external_database_results[external_database]:
+				annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
+	except Exception, e:
+		print(e)
 
 	return annotation_report_driver
 
