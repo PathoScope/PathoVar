@@ -45,14 +45,13 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 						dumpStream.write(line)
 						continue
 					gID = parseObj["gene_id"]
-					strainName = ""
 					#manually look for strain name by index if needed
-					if not gidMap.has_key(gID):
-						tag = line.split()[0]
-						splitTag = tag.split("|")
-						if len(splitTag) ==  9:
-							gidMap[gID] = splitTag[7]
-					strainName = gidMap[gID]
+					#if not gidMap.has_key(gID):
+					#	tag = line.split()[0]
+					#	splitTag = tag.split("|")
+					#	if len(splitTag) ==  9:
+					#		gidMap[gID]["accession"] = splitTag[7]
+					strainName = gidMap[gID]["accession"]
 					if gidMap.has_key(gID):
 						modLine = re.sub(r'^[ti,gi][^\t]*\t',strainName.split(".")[0] + "\t",line)
 						#create stream and file if needed
@@ -75,7 +74,7 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 	validSet = set()
 	for gID in streamMap.keys():
 		try:
-			buildDatabase(snpPath,gID,gidMap[gID])	
+			buildDatabase(snpPath,gID,gidMap[gID]["accession"],gidMap[gID]["codon_table"])	
 			validSet.add(gID)
 		except Exception, e:
 			print e
@@ -84,7 +83,7 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 	finalSet = {}
 	for geneID in validSet:
 		try:
-			annoFile = annotate(snpPath,gidMap[geneID],streamMap[geneID].name)
+			annoFile = annotate(snpPath,gidMap[geneID]["accession"],streamMap[geneID].name)
 			finalSet[geneID] = annoFile
 		except Exception,e:
 			print e
@@ -113,8 +112,25 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 #snpPath is path to snpEff directory
 #geneID is the gid of the strain
 #strainName is the accession name
-def fetchGenome(snpPath,genomeDir,geneID,strainName):
+def fetchGenome(snpPath,genomeDir,geneID,strainName,codonTable):
 	eutils_handle = entrez_eutils.EntrezEUtilsDriver()
+	codonMap = {'1':'codon.Standard',
+	'2':'codon.Vertebrate_Mitochondrial',
+	'3':'codon.Yeast_Mitochondrial',
+	'4':'codon.Mold_Mitochondrial',
+	'5':'codon.Invertebrate_Mitochondrial',
+	'6':'codon.Ciliate_Nuclear',
+	'9':'codon.Echinoderm_Mitochondrial',
+	'10':'codon.Euplotid_Nuclear',
+	'11':'codon.Bacterial_and_Plant_Plastid',
+	'12':'codon.Alternative_Yeast_Nuclear',
+	'13':'codon.Ascidian_Mitochondrial',
+	'14':'codon.Alternative_Flatworm_Mitochondrial',
+	'15':'codon.Blepharisma_Macronuclear',
+	'16':'codon.Chlorophycean_Mitochondrial',
+	'21':'codon.Trematode_Mitochondrial',
+	'22':'codon.Scenedesmus_obliquus_Mitochondrial',
+	'23':,'codon.Thraustochytrium_Mitochondrial'}
 	if not os.path.isfile(genomeDir + "/" + strainName + '.fa'):
 		genomeSequence = eutils_handle.find_nucleotides_by_gene_id(geneID)
 		splitSeq = genomeSequence.split("\n")
@@ -131,8 +147,11 @@ def fetchGenome(snpPath,genomeDir,geneID,strainName):
 			if(strainName + ".genome")  in line:
 				needsMod = 0
 	if needsMod:
+		if not codonMap.has_key(codonTable):
+			raise snpEffConfigException("Cannot find codon table. Manual config file update may be required")
 		addFile = open(snpPath+"/snpEff.config","a")
 		addFile.write("%s.genome : %s\n" % (strainName,strainName))
+		addFile.write("\t%s.%s.codonTable: %s" %(strainName,strainName.split(".")[0],codonMap[codonTable]))
 		addFile.close()
 
 #Call to build a database. Will download file if needed
@@ -140,7 +159,7 @@ def fetchGenome(snpPath,genomeDir,geneID,strainName):
 #snpPath is path to snpEff directory
 #geneID is the gid of the strain
 #strainName is the accession name
-def buildDatabase(snpPath,geneID,strainName):
+def buildDatabase(snpPath,geneID,strainName,codonTable):
 	genomeDir = snpPath + "/data/" + strainName + "/"
 	snpFile = snpPath + "/snpEff.jar"
 	if not os.path.exists(genomeDir):
@@ -149,7 +168,7 @@ def buildDatabase(snpPath,geneID,strainName):
 		except OSError:
 			raise snpEffPermissionsException("WARNING: Unable to create directory in snpEff due to permissions")
 	if not os.path.isfile(genomeDir + '/snpEffectPredictor.bin'):
-		fetchGenome(snpPath,genomeDir,geneID,strainName)
+		fetchGenome(snpPath,genomeDir,geneID,strainName,codonTable)
 		subprocess.check_call(["java","-jar",snpFile,"build","-genbank",strainName])
 
 #Call to annotate a file. SHOULD BUILD DATABASE FIRST
