@@ -11,9 +11,6 @@ from pathovar.web import entrez_eutils
 from pathovar.utils import defline_parser
 
 def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
-	#JOSH: modify the following 4 lines to instead be passed as arguments to the method
-	#Can rename the method to whatever you want if main won't work
-	#Please use gidMap = {} as the default if the argument isn't given
 	if tempDir == None:
 		tempDir = tempfile.mkdtemp()
 	if gidMap == None:
@@ -45,15 +42,13 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 						dumpStream.write(line)
 						continue
 					gID = parseObj["gene_id"]
-					strainName = ""
 					#manually look for strain name by index if needed
-					if not gidMap.has_key(gID):
-						tag = line.split()[0]
-						splitTag = tag.split("|")
-						if len(splitTag) ==  9:
-							gidMap[gID] = dict()
-							gidMap[gID]['accession'] = splitTag[7]
-					strainName = gidMap[gID]['accession']
+					#if not gidMap.has_key(gID):
+					#	tag = line.split()[0]
+					#	splitTag = tag.split("|")
+					#	if len(splitTag) ==  9:
+					#		gidMap[gID]["accession"] = splitTag[7]
+					strainName = gidMap[gID]["accession"]
 					if gidMap.has_key(gID):
 						modLine = re.sub(r'^[ti,gi][^\t]*\t',strainName.split(".")[0] + "\t",line)
 						#create stream and file if needed
@@ -76,7 +71,9 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 	validSet = set()
 	for gID in streamMap.keys():
 		try:
-			buildDatabase(snpPath,gID,gidMap[gID]['accession'])	
+			print("Building Database")
+			buildDatabase(snpPath,gID,gidMap[gID]["accession"],gidMap[gID]["codon_table"])
+			print("after")
 			validSet.add(gID)
 		except Exception, e:
 			print e
@@ -89,6 +86,7 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 	for geneID in validSet:
 		try:
 			annoFile = annotate(snpPath,gidMap[geneID]['accession'],streamMap[geneID].name)
+			annoFile = annotate(snpPath,gidMap[geneID]["accession"],streamMap[geneID].name)
 			finalSet[geneID] = annoFile
 		except Exception,e:
 			print e
@@ -122,8 +120,27 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 #snpPath is path to snpEff directory
 #geneID is the gid of the strain
 #strainName is the accession name
-def fetchGenome(snpPath,genomeDir,geneID,strainName):
+def fetchGenome(snpPath,genomeDir,geneID,strainName,codonTable):
+	codonTable = str(codonTable)
 	eutils_handle = entrez_eutils.EntrezEUtilsDriver()
+	codonMap = {'1':'codon.Standard',
+	'2': 'Vertebrate_Mitochondrial',
+	'3': 'Yeast_Mitochondrial',
+	'4': 'Mold_Mitochondrial',
+	'5': 'Invertebrate_Mitochondrial',
+	'6': 'Ciliate_Nuclear',
+	'9': 'Echinoderm_Mitochondrial',
+	'10':'Euplotid_Nuclear',
+	'11':'Bacterial_and_Plant_Plastid',
+	'12':'Alternative_Yeast_Nuclear',
+	'13':'Ascidian_Mitochondrial',
+	'14':'Alternative_Flatworm_Mitochondrial',
+	'15':'Blepharisma_Macronuclear',
+	'16':'Chlorophycean_Mitochondrial',
+	'21':'Trematode_Mitochondrial',
+	'22':'Scenedesmus_obliquus_Mitochondrial',
+	'23':'Thraustochytrium_Mitochondrial',
+	}
 	if not os.path.isfile(genomeDir + "/" + strainName + '.fa'):
 		genomeSequence = eutils_handle.find_nucleotides_by_gene_id(geneID)
 		splitSeq = genomeSequence.split("\n")
@@ -138,10 +155,16 @@ def fetchGenome(snpPath,genomeDir,geneID,strainName):
 	with open(snpPath+"/snpEff.config", "r") as configfile:
 		for line in configfile:
 			if(strainName + ".genome")  in line:
+				print("Don't Mod")
 				needsMod = 0
 	if needsMod:
+		print(codonTable)
+		if not codonMap.has_key(codonTable):
+			raise snpEffConfigException("Cannot find codon table. Manual config file update may be required")
 		addFile = open(snpPath+"/snpEff.config","a")
+		print("Modding file", snpPath+"/snpEff.config")
 		addFile.write("%s.genome : %s\n" % (strainName,strainName))
+		addFile.write("\t%s.%s.codonTable: %s\n" %(strainName,strainName.split(".")[0],codonMap[codonTable]))
 		addFile.close()
 
 #Call to build a database. Will download file if needed
@@ -149,7 +172,7 @@ def fetchGenome(snpPath,genomeDir,geneID,strainName):
 #snpPath is path to snpEff directory
 #geneID is the gid of the strain
 #strainName is the accession name
-def buildDatabase(snpPath,geneID,strainName):
+def buildDatabase(snpPath,geneID,strainName,codonTable):
 	genomeDir = snpPath + "/data/" + strainName + "/"
 	snpFile = snpPath + "/snpEff.jar"
 	if not os.path.exists(genomeDir):
@@ -158,7 +181,7 @@ def buildDatabase(snpPath,geneID,strainName):
 		except OSError:
 			raise snpEffPermissionsException("WARNING: Unable to create directory in snpEff due to permissions")
 	if not os.path.isfile(genomeDir + '/snpEffectPredictor.bin'):
-		fetchGenome(snpPath,genomeDir,geneID,strainName)
+		fetchGenome(snpPath,genomeDir,geneID,strainName,codonTable)
 		subprocess.check_call(["java","-jar",snpFile,"build","-genbank",strainName])
 
 #Call to annotate a file. SHOULD BUILD DATABASE FIRST
@@ -201,12 +224,6 @@ def parseTag(extractTag):
 def cleanDir(dir):
 	map(os.remove, glob.glob(os.path.join(dir,"*.vcf")))
 	os.rmdir(dir)
-
-CODON_TABLE_MAP = {
-	"1": "Standard",
-	"2": "Vertebrate_Mitochondrial",
-
-}
 
 #Cant find the config file
 class snpEffConfigException(Exception):
