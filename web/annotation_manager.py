@@ -24,10 +24,8 @@ class EntrezAnnotationManager(object):
         elif self.cache_type == None:
             self.cache_manager = None
 
-    def genome_mutual_gid_to_accesion(self):
-        mapping = {gid:genome.accession for gid, genome in self.genome_annotations.items()}
-        for key, value in mapping.items():
-            mapping[value] = key
+    def genome_to_accesion_and_codon_table(self):
+        mapping = {gid:{'accession': genome.accession, "codon_table":genome.genetic_code} for gid, genome in self.genome_annotations.items()}
         return mapping
 
     def get_genome_annotation(self, gid):

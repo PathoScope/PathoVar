@@ -39,7 +39,7 @@ def main(args):
 
 	anno_vcf = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
-	eff_data = run_snpeff(args, anno_vcf, annotation_manager_driver, **opts)
+	run_snpeff(args, anno_vcf, annotation_report_driver, **opts)
 
 	annotation_report_driver.to_json_file()
 
@@ -54,13 +54,20 @@ def find_variant_locations(vcf_file, annotation_manager_driver, **opts):
 	anno_vcf = variant_locator_driver.write_annotated_vcf()
 	return anno_vcf
 
-def run_snpeff(args, anno_vcf, annotation_manager_driver, **opts):
+def run_snpeff(args, anno_vcf, annotation_report_driver, **opts):
 	try:
+		if args.snpeff_path is None:
+			raise Exception("snpEff path not set. Step Not Run.")
 		eff_data = snpeff_driver.main(args.snpeff_path, anno_vcf, tempDir = None, 
-			gidMap = annotation_manager_driver.genome_mutual_gid_to_accesion(), **opts)
-		return eff_data
-	except Exception, e:
+			gidMap = annotation_report_driver.annotation_manager.genome_to_accesion_and_codon_table(), **opts)
+		annotation_report_driver.consume_snpeff_results(eff_data)
+	#except Exception, e:
+	except ImportError, e:
+		raise e
 		print(e)
+		exc_type, exc_obj, exc_tb = sys.exc_info()
+		fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+		print(exc_type, fname, exc_tb.tb_lineno)
 
 def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)
@@ -103,6 +110,9 @@ def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 				annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
 	except Exception, e:
 		print(e)
+		exc_type, exc_obj, exc_tb = sys.exc_info()
+		fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+		print(exc_type, fname, exc_tb.tb_lineno)
 
 	return annotation_report_driver
 

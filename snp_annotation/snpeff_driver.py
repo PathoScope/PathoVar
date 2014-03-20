@@ -51,8 +51,9 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 						tag = line.split()[0]
 						splitTag = tag.split("|")
 						if len(splitTag) ==  9:
-							gidMap[gID] = splitTag[7]
-					strainName = gidMap[gID]
+							gidMap[gID] = dict()
+							gidMap[gID]['accession'] = splitTag[7]
+					strainName = gidMap[gID]['accession']
 					if gidMap.has_key(gID):
 						modLine = re.sub(r'^[ti,gi][^\t]*\t',strainName.split(".")[0] + "\t",line)
 						#create stream and file if needed
@@ -75,16 +76,19 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 	validSet = set()
 	for gID in streamMap.keys():
 		try:
-			buildDatabase(snpPath,gID,gidMap[gID])	
+			buildDatabase(snpPath,gID,gidMap[gID]['accession'])	
 			validSet.add(gID)
 		except Exception, e:
 			print e
+			exc_type, exc_obj, exc_tb = sys.exc_info()
+			fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+			print(exc_type, fname, exc_tb.tb_lineno)
 			buildErrorSet.add(gID)
 	annoErrorSet = set()
 	finalSet = {}
 	for geneID in validSet:
 		try:
-			annoFile = annotate(snpPath,gidMap[geneID],streamMap[geneID].name)
+			annoFile = annotate(snpPath,gidMap[geneID]['accession'],streamMap[geneID].name)
 			finalSet[geneID] = annoFile
 		except Exception,e:
 			print e
@@ -100,10 +104,15 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 						splitArr = line.split()
 						loc = splitArr[1]
 						effArr = splitArr[7].split(";EFF=")
+						annoArr = splitArr[7].split(";GENE=")
 						if len(effArr) > 1:
 							resultsDict[geneID][loc] = parseTag(effArr[1])
-		except Exception:
-			pass
+						if len(annoArr) > 1:
+							gID = re.search(r'gi:([a-zA-Z0-9_]+)', annoArr[1])
+							if gID is not None:
+								resultsDict[geneID][loc]['gID'] = gID.group(1)
+		except Exception, e:
+			print e
 
 	cleanDir(tempDir)
 	return resultsDict
@@ -185,13 +194,19 @@ def parseTag(extractTag):
 		if len(compArr) > 11:
 			infoReturn[nextKey]["error"] = compArr[11].split(")")[0]
 		if len(aaChange) > 0:
-			infoReturn[nextKey]["aaChange"] = aaChange
+			infoReturn[nextKey]["aaChange"] = re.split(r'[0-9]+', aaChange)
 		nextKey = nextKey + 1
 	return infoReturn
 
 def cleanDir(dir):
 	map(os.remove, glob.glob(os.path.join(dir,"*.vcf")))
 	os.rmdir(dir)
+
+CODON_TABLE_MAP = {
+	"1": "Standard",
+	"2": "Vertebrate_Mitochondrial",
+
+}
 
 #Cant find the config file
 class snpEffConfigException(Exception):

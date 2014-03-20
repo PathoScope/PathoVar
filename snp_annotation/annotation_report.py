@@ -195,8 +195,6 @@ class AnnotationReport(object):
                     # Not all Entries have an annotations field.
                     pass
 
-
-
     ## TODO
     ## Mutation transformation validation fails on sequences with indels, and indices are unreliable
     ## so it is not included in the pipeline
@@ -247,6 +245,21 @@ class AnnotationReport(object):
             if not 'blast_hits' in query_entry:
                 query_entry['blast_hits'] = dict()
             query_entry['blast_hits'][db_name] = blast_results.queries[query].to_json_safe_dict()['hits']
+
+    def consume_snpeff_results(self, snpeff_results):
+        for genome, effects in snpeff_results.items():
+            for locus, locus_effect in effects.items():
+                if 'gID' in locus_effect:
+                    gene = self[locus_effect['gID']]
+                    for nth, nth_effect in locus_effect.items():
+                        if nth == 'gID': continue
+                        # VCF POS is 1-indexed
+                        variants = [var for var in gene['variants'] if (var['start'] == (int(locus) - 1))]
+                        if len(variants) == 0:
+                            raise Exception("No matching variant found when mapping snpEff results")
+                        var = variants[0]
+                        var['eff'] = nth_effect
+
 
     def consume_generic_result(self, result_obj):
         if self.verbose: print("Consuming %s Results" % result_obj.name)
