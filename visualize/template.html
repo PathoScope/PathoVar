@@ -1,0 +1,100 @@
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Variant Viewer</title>
+<script src="https://sites.google.com/site/mobiuskleinscripthost/resources/js/lib.min.js"></script>
+<script src="http://netdna.bootstrapcdn.com/bootstrap/3.1.0/js/bootstrap.min.js"></script>
+<script src="https://sites.google.com/site/mobiuskleinscripthost/resources/js/main.min.js"></script>
+<link rel="stylesheet" type="text/css" href="http://glyphicons.getbootstrap.com/css/bootstrap-glyphicons.css">
+<link rel="stylesheet" type="text/css" href="https://sites.google.com/site/mobiuskleinscripthost/resources/css/main.min.css">
+<script id='data-hook' async></script>
+
+</head>
+<body class="container">
+  <div class='row clearfix' >
+    <div id='header'>
+      <h1>Variant Viewer</h1>
+      <div id='organisms-container'>
+        <b>Select an organism:</b></br>
+        <select class='form-control' id="organisms">
+        </select>
+      </div>
+    </div>
+  </div>
+<div class="row clearfix" style='margin-bottom: 5px;'>
+  <div class="col-md-3">
+    <button id="help-btn" class='btn btn-xs tt' title="Help Menu"><b>?</b></button>
+    <button id="opts-btn" class='btn btn-xs tt' title="Configuration Menu"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30" width="30" height="30"><path d="M14 0 H18 L19 6 L20.707 6.707 L26 3.293 L28.707 6 L25.293 11.293 L26 13 L32 14 V18 L26 19 L25.293 20.707 L28.707 26 L26 28.707 L20.707 25.293 L19 26 L18 32 L14 32 L13 26 L11.293 25.293 L6 28.707 L3.293 26 L6.707 20.707 L6 19 L0 18 L0 14 L6 13 L6.707 11.293 L3.293 6 L6 3.293 L11.293 6.707 L13 6 L14 0 z M16 10 A6 6 0 0 0 16 22 A6 6 0 0 0 16 10"></path></svg></button>
+  </div>
+</div>
+<div class='row'>
+  <div id="suggestions" style='position: relative; top: 40px; left: 300px;z-index: 99999; width: 100%'>
+  </div>
+  <div id='entry-list-container' class='col-md-3'>
+    <div><b>Genes with Variants</b> <a id='expander' class="pull-right" style='visibility:hidden;'>-</a></div>
+    <div id="gene-filter-input-group" class="input-group tooltipped" data-toggle="tooltip" spellcheck=false title="Type gene search terms to filter the list of genes displayed." data-placement="right">
+      <span class="input-group-addon glyphicon ">
+        <!--  http://jxnblk.github.io/geomicons-open/ works more reliably than glyphicon -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox = "0 0 30 30" width="30" height="30" style='width:1em;height1em;'>
+          <path d="M12 0 A12 12 0 0 0 0 12 A12 12 0 0 0 12 24 A12 12 0 0 0 18.5 22.25 L28 32 L32 28 L22.25 18.5 A12 12 0 0 0 24 12 A12 12 0 0 0 12 0 M12 4 A8 8 0 0 1 12 20 A8 8 0 0 1 12 4"></path>
+        </svg>
+    </span>
+      <input id="gene-filter-input" class='form-control' type='text' placeholder='Type gene descriptors'>
+    </div>
+    <div id='entry-list'>
+    </div>
+  </div>
+  <div id='core-content' class='col-md-9 tab-content'>
+    <p id="active-sequence"></p>
+    <ul id='tabber' class="nav nav-tabs">
+      <li class='active'><a id='snp-tab' href="#snp-container" data-toggle="tab">Variant List <span class="badge"></span></a></li>
+      <li><a id='sequence-tab' href="#sequence-container" data-toggle="tab">Sequence Summary<span class="badge"></span></a></li>
+      <li><a id='seq-anno-tab' href="#seq-anno-container" data-toggle='tab'>Annotations <span class="badge"></span></a></li>
+      <li><a id='blast-tab' href="#blast-hits-container" data-toggle="tab">Blast Hits <span class="badge"></span></a></li>
+    </ul>
+    <div id='snp-container' class='tab-pane active'>
+      <table id='snp-table' class='annotation-display-table table'>
+      </table>
+    </div>
+    <div id='sequence-container' class='tab-pane'>
+      <div id='sequence-details-container'>
+      </div>
+      <div id='sequence-widget-container'>
+      </div>
+    </div>
+    <div id='seq-anno-container' class='tab-pane'>
+      <table id='genbank-region-annotations' class='annotation-display-table table'>
+      </table>
+      <div id='genbank-biosystem-annotations'>
+      </div>
+    </div>
+    <div id="blast-hits-container" class='tab-pane'>
+      <table id='blast-hit-annotations' class='annotation-display-table table'>
+      </table>
+    </div>
+  </div>
+</div>
+<br>
+</div>
+
+<div class="modal fade" id="data-modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+        <h4 class="modal-title" id="data-modal-label"></h4>
+      </div>
+      <div class="modal-body">
+        ...
+      </div>
+      <div class="modal-footer">
+        <button id='modal-apply-btn' type="button" class="btn btn-primary" data-dismiss="modal">Apply</button>
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -10,3 +10,4 @@ Things that ought to be done when we have a spare minute
 - Allow multiple programmatic schemes for filtering variants 
 - Make notes of redundancy between PATRIC, VIPR, and GenBank
 - Take the maximum number of threads as a parameter, and use multiprocessing/subprocess to separate SNP calling and annotation parsing to be on *max_threads* processes at a given time.
+- Exact matching for Epitope sequences, against the regions flanking the variants

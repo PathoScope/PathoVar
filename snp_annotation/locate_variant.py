@@ -11,10 +11,8 @@ from pathovar.web.annotation_manager import EntrezAnnotationManager
 from pathovar import utils
 from pathovar.utils import vcf_utils
 
-QUAL_FILTERS = [vcf_utils.FilterByAltCallDepth, vcf_utils.FilterByReadDepth]
-
 def init_quality_filters(filter_args):
-    filters = [filt(filter_args) for filt in QUAL_FILTERS]
+    filters = [filt(filter_args) for filt in vcf_utils.EXPOSED_FILTERS]
     return filters
 
 class VariantLocator(object):

@@ -8,8 +8,10 @@ import argparse
 
 import pathovar
 from pathovar import utils
+from pathovar.utils.vcf_utils import EXPOSED_FILTERS
 
-argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100))
+argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100), 
+	conflict_handler='resolve')
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
 argparser.add_argument("sam_file", help = "The alignment file to call variants from [Required]")
 argparser.add_argument('--clean', action = "store_true", help="Clean up intermediary files after they're finished being used [default:False]")
@@ -28,11 +30,12 @@ snp_caller_args.add_argument('-b','--snp-caller-binary-location', action="store"
 
 snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
 snp_anno_args.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
-
+snp_anno_args.add_argument('--snpeff-path', default = '', action = 'store', required = False, help = "Path to the snpEff.jar and .config files [default: search system path]")
+snp_anno_args.add_argument('--blast-path', default = '', action = 'store', required = False, help = 'Path to the NCBI BLAST executables. [default: search system path]')
 
 snp_filt_args = argparser.add_argument_group("Variant Filtering Options")
-snp_filt_args.add_argument('--min-depth', type=int, default=5, help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
-snp_filt_args.add_argument('--alt-depth', type=float, default=0.4, help="The minimum ratio of all calls for a locus that must be an alternative allele [default:0.4]")
+for filter_type in EXPOSED_FILTERS:
+	filter_type.customize_parser(snp_filt_args)
 
 def call_snps(args, **opts):
 	snp_caller_driver = None
@@ -64,6 +67,10 @@ def main(args):
 	filter_args = utils.Namespace()
 	filter_args.alt_depth = args.alt_depth
 	filter_args.min_depth = args.min_depth
+	filter_args.min_mq = args.min_mq
+	filter_args.min_qual = args.min_qual
+	filter_args.ref_vcfs = args.ref_vcfs
+	filter_args.intersection = args.intersection
 
 	from pathovar.snp_annotation import locate_variant, annotation_report 
 	from pathovar.snp_annotation.__main__ import run_annotation_report, find_variant_locations
@@ -76,7 +83,10 @@ def main(args):
 
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
 
-	annotation_report_driver.to_json_file()
+	anno_json = annotation_report_driver.to_json_file()
+
+	from pathovar.visualize.build_html_report import build_report
+	build_report(anno_json)
 
 	snp_annotated_time = time()
 	if args.verbose: print('SNP Annotation Done (%s sec)' % str(snp_annotated_time - snp_called_time))

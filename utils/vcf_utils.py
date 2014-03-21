@@ -4,9 +4,25 @@ import json
 from collections import defaultdict
 
 # 3rd Party Imports
-import vcf
-from vcf.parser import _Filter
-from vcf.filters import Base as VCFFilterBase
+VCFFilterBase = None
+_Filter = None
+class PyVCFStub(object):
+    def __init__(self, *args, **kwargs):
+        pass
+    @classmethod
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError("These features are not available. Please install PyVCF: https://github.com/jamescasbon/PyVCF")
+try:
+    import vcf
+    from vcf.parser import _Filter
+    from vcf.filters import Base as VCFFilterBase
+except ImportError, e:
+    # Stubbing so if the user does not install vcf they can still see the help menu from pathoscope
+    vcf = PyVCFStub()
+    vcf.model = PyVCFStub()
+    vcf.model._Record = PyVCFStub()
+    VCFFilterBase = PyVCFStub
+    _Filter = PyVCFStub
 
 from pathovar.utils import defline_parser
 
@@ -141,11 +157,6 @@ def vcf_to_gene_report(vcf_path):
         report.write(line + '\n')
     report.close()
 
-def split_vcf_by_chromosome(vcf_path, target_dir = None):
-    if target_dir == None:
-        target_dir = os.path.dirname(vcf_path)
-    
-
 ## VCF Filter Classes
 class FilterByComparisonVCF(VCFFilterBase):
     '''Filter a VCF File by comparing its sites to another VCF File and operating on the intersection/difference'''
@@ -153,12 +164,13 @@ class FilterByComparisonVCF(VCFFilterBase):
 
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('-r', '--ref-vcfs', type=str, nargs="+", help="A VCF file against which to compare (may specify more than once)")
+        parser.add_argument('--ref-vcfs', type=str, nargs="+", help="A VCF file against which to compare (may specify more than one)")
         parser.add_argument('--intersection', type=bool, default=False, help="Instead of excluding intersecting sites, keep them and drop sites not found in both files.")
 
     def __init__(self, args):
         self.reference_vcfs = args.ref_vcfs
-        print(self.reference_vcfs)
+        if self.reference_vcfs is None:
+            self.reference_vcfs = []
         self.reference_variants =[]
         for ref_vcf in self.reference_vcfs:
             self.reference_variants += [var for var in vcf.Reader(open(ref_vcf))]
@@ -265,7 +277,7 @@ class FilterByReadDepth(VCFFilterBase):
         return "%s-%d" % (self.name, self.min_depth)
 
     def __call__(self, record):
-        if record.INFO['DP'] >= self.min_depth:
+        if sum(record.INFO['DP4']) >= self.min_depth:
             return record
 
 class FilterByCallQuality(VCFFilterBase):
@@ -310,7 +322,7 @@ def main():
     arg_parser = argparse.ArgumentParser(prog='filter-vcf')
     for filter_type in EXPOSED_FILTERS:
         filter_type.customize_parser(arg_parser)
-    arg_parser.add_argument('target_vcf_file', help="Target VCF to filter")
+    arg_parser.add_argument('vcf_file', help="Target VCF to filter")
     arg_parser.add_argument('-o', dest='output_file', default=None, help="The name of the output file. Defaults to the input file name + '.filt.vcf'")
     args = arg_parser.parse_args()
     print(args)
@@ -324,7 +336,7 @@ def main():
             # print("Filter Failed", filter_type, e)
             # Ignore failing to build a filter, since it means that the filter 
             # was not initialized properly, and it should not be used in that case.
-    filter_vcf(args.target_vcf_file, filters, output_file = args.output_file)
+    filter_vcf(args.vcf_file, filters, output_file = args.output_file)
 
 if __name__ == '__main__':
     main()

@@ -71,9 +71,7 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 	validSet = set()
 	for gID in streamMap.keys():
 		try:
-			print("Building Database")
 			buildDatabase(snpPath,gID,gidMap[gID]["accession"],gidMap[gID]["codon_table"])
-			print("after")
 			validSet.add(gID)
 		except Exception, e:
 			print e
@@ -91,8 +89,8 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 		except Exception,e:
 			print e
 			annoErrorSet.add(geneID)
-	print(buildErrorSet)
-	print(annoErrorSet)
+	# print(buildErrorSet)
+	# print(annoErrorSet)
 	resultsDict = defaultdict(lambda : defaultdict(int))
 	for geneID in finalSet.keys():
 		try:
@@ -155,14 +153,11 @@ def fetchGenome(snpPath,genomeDir,geneID,strainName,codonTable):
 	with open(snpPath+"/snpEff.config", "r") as configfile:
 		for line in configfile:
 			if(strainName + ".genome")  in line:
-				print("Don't Mod")
 				needsMod = 0
 	if needsMod:
-		print(codonTable)
 		if not codonMap.has_key(codonTable):
 			raise snpEffConfigException("Cannot find codon table. Manual config file update may be required")
 		addFile = open(snpPath+"/snpEff.config","a")
-		print("Modding file", snpPath+"/snpEff.config")
 		addFile.write("%s.genome : %s\n" % (strainName,strainName))
 		addFile.write("\t%s.%s.codonTable: %s\n" %(strainName,strainName.split(".")[0],codonMap[codonTable]))
 		addFile.close()
