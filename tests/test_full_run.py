@@ -5,7 +5,7 @@ import glob
 from time import time
 
 import pathovar
-from pathovar.__main__ import call_snps
+from pathovar.__main__ import call_snps, argparser
 from pathovar.snp_annotation.__main__ import find_variant_locations, run_annotation_report
 
 from pathovar.web import annotation_manager
@@ -14,6 +14,7 @@ from pathovar import utils
 from pathovar.utils import vcf_utils
 
 global_args = utils.Namespace()
+argparser.get_default(global_args)
 global_args.verbose = True
 global_args.clean = True
 
