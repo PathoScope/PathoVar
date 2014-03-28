@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import subprocess
 import argparse
@@ -17,6 +18,8 @@ def main():
     databases = set(args.databases)
 
     # Attach args.config here
+    if(not os.path.exists(args.config)):
+        pass
     database_config_data = pathovar.get_external_databases_config()
     
     if("version" not in database_config_data or 
@@ -46,12 +49,14 @@ def main():
                 # Attach args.config here
                 cmd += ' --config-file ' + args.config
 
-                subprocess.call(cmd, shell=True)
-                config_data['enabled'] = True
+                result = subprocess.check_call(cmd, shell=True)
+                config_data['enabled'] = (result == 0)
                 database_config_data[database] = config_data
             else:
                 print("No setup script found for %s" % database) 
-
+        except subprocess.CalledProcessError, e:
+            config_data['enabled'] = False
+            database_config_data[database] = config_data
         except KeyError, e:
             print("No entry for %s" % database)
 

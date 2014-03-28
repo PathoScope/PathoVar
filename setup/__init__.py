@@ -23,6 +23,7 @@ class SetupManager(object):
         self.verbose = opts.get('verbose', False)
         self.storage_path = self.database_data['storage_path']
         self.opts = opts
+        self.errors = 0
 
     def _pre_setup_dirs(self, *args, **kwargs):
         pass
@@ -90,7 +91,12 @@ class SetupManager(object):
     def get_file_by_url(self, url, destination_dir):
         if self.verbose: print("Getting %s" % url)
         file_data = requests.get(url)
-        file_data.raise_for_status()
+        try:
+            file_data.raise_for_status()
+        except requests.exceptions.HTTPError, e:
+            print("Failed to locate resource, %r" % e)
+            self.errors += 1
+            return
         file_name = url.split('/')[-1]
         with open(destination_dir + os.sep + file_name, 'wb') as data_file:
             data_file.write(file_data.content)
@@ -114,6 +120,9 @@ class SetupManager(object):
         else:
             self.setup_dirs(*args, **kwargs)
             self.download_files(*args, **kwargs)
+        if self.errors > 0:
+            print("Errors have occurred")
+            exit(1)
 
     def remove(self, *args, **kwargs):
          shutil.rmtree(os.path.join(INSTALL_DIR, self.storage_path))

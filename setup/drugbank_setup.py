@@ -10,7 +10,7 @@ database_data = get_external_databases_config()['drugbank']
 
 class DrugBankSetupManager(SetupManager):
     def __init__(self, *args, **kwargs):
-        SetupManager.__init__(self, database_data, *args, **kwargs)
+        SetupManager.__init__(self, database_data, 'drugbank', *args, **kwargs)
 
 if __name__ == '__main__':
     DrugBankSetupManager(verbose=True, **get_args()).run()
