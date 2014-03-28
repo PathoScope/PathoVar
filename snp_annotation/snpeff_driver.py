@@ -220,16 +220,19 @@ def cleanDir(dir):
 	map(os.remove, glob.glob(os.path.join(dir,"*.vcf")))
 	os.rmdir(dir)
 
+class snpEffException(Exception):
+	pass
+
 #Cant find the config file
-class snpEffConfigException(Exception):
+class snpEffConfigException(snpEffException):
 	pass
 
 #Cant run the methods
-class snpEffRunException(Exception):
+class snpEffRunException(snpEffException):
 	pass
 
 #Cant write to directory
-class snpEffPermissionsException(Exception):
+class snpEffPermissionsException(snpEffException):
 	pass
 
 if __name__ == "__main__":

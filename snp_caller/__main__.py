@@ -1,39 +1,53 @@
-import os
 import sys
+import os
+from time import time
+from collections import defaultdict
 import argparse
 
-from pathovar.utils import sam_utils
+import pathovar
+from pathovar import utils
+from pathovar.utils.vcf_utils import EXPOSED_FILTERS
 
-argparser = argparse.ArgumentParser(prog="pathovar.snp_caller.sam_utils")
+argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100), 
+    conflict_handler='resolve')
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
+argparser.add_argument("sam_file", help = "The alignment file to call variants from [Required]")
+argparser.add_argument('--clean', action = "store_true", help="Clean up intermediary files after they're finished being used [default:False]")
 argparser.add_argument("--test", action = "store_true", required = False, help="Enter IPython Interactive Session after execution completes [Development Only]")
 
-sub_commands = argparser.add_subparsers(help="sub-command help")
+target_args = argparser.add_argument_group("Target Organism Selection")
+target_args.add_argument('-r',"--reference-genomes", metavar = "REF", action = "store", required=True, help = "path to a fasta file containing all reference genomes to call against. [Required]")
+target_args.add_argument("--org-names", metavar = "ORG-REGEX", action="store", help = "A valid regular expression that matches organism names associated with reference genomes.[optional]")
+target_args.add_argument("--tax-ids", metavar = "TI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Taxonomy ID numbers for each genome to call against.[optional]")
+target_args.add_argument("--gene-ids", metavar = "GI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Gene ID numbers for each genome to call against.[optional]")
+target_args.add_argument("--keep-all-sequences", action="store_true", default=False, help = "Do NOT discard any sequence in the database that is NOT a complete genome or complete plasmid sequence [optional]")
 
-filter_sam_file = sub_commands.add_parser("filter-sam", help="Filter a .sam file")
-filter_sam_file_actions = filter_sam_file.add_mutually_exclusive_group(required = True)
-filter_sam_file_actions.add_argument('--remove', action='store', type=str, help="A regular expression matching the reference to be removed")
-filter_sam_file_actions.add_argument('--rename', action='store', nargs=2, type=str, help="A regular expression matching the reference to be renamed, followed by the new name")
-filter_sam_file_actions.add_argument('-o', '--output', action='store', type=str, help="Name of file output file to save to")
-filter_sam_file.add_argument("sam_file", action='store', help=".sam file to operate on")
+snp_caller_args = argparser.add_argument_group("SNP Caller Options")
+snp_caller_args.add_argument('-s','--snp-caller', action="store", default = "samtools", choices = ["samtools"], help="Select the SNP Calling Program.[default:samtools]")
+snp_caller_args.add_argument('-b','--snp-caller-path', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
 
-filer_vcf_file = sub_commands.add_parser("filter-vcf", help="Filter a .vcf file")
-
-
-def filter_sam_remove(args):
-    parser = sam_utils.SAMParser(args.sam_file)
-    parser.parse_file()
-    target = args.remove.decode('string-escape')
-    parser.remove(target)
-
-
-
-
+def call_snps(args, **opts):
+    snp_caller_driver = None
+    if args.snp_caller == "samtools":
+        from pathovar.snp_caller import samtools_snp_caller
+        snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_path, **opts)
+    variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, 
+        org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
+        keep_all = args.keep_all_sequences)
+    consensus_sequences = variant_file + ".cns.fq"
+    return variant_file
 
 def main(args):
-    pass
+    opts = {}
+    opts['verbose'] = args.verbose
+    opts['clean'] = args.clean
+
+    if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
+    start_clock = time()
+    variant_file = call_snps(args, **opts)
+    snp_called_time = time()
+    if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
 
 if __name__ == '__main__':
     args = argparser.parse_args()
-    if args.verbose: print(args)
     main(args)

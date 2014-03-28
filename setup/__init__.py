@@ -1,3 +1,5 @@
+import argparse
+import glob
 import os
 import shutil
 import sys
@@ -6,9 +8,18 @@ import subprocess
 
 from pathovar import get_external_databases_config, INSTALL_DIR
 
+setup_argparser = argparse.ArgumentParser()
+setup_argparser.add_argument('--remove', action="store_true", default=False, help = "Remove database files")
+setup_argparser.add_argument('--update', action="store_true", default=False, help = "Update database files")
+setup_argparser.add_argument('--config-file', action='store', default=None, help = "Path to the configuration file to use")
+def get_args():
+    args = setup_argparser.parse_args()
+    return args.__dict__
+
 class SetupManager(object):
-    def __init__(self, database_data, **opts):
+    def __init__(self, database_data, database_key, **opts):
         self.database_data = database_data
+        self.database_key = 'drugbank'
         self.verbose = opts.get('verbose', False)
         self.storage_path = self.database_data['storage_path']
         self.opts = opts
@@ -33,6 +44,29 @@ class SetupManager(object):
                 except OSError, e:
                     if self.verbose: print("Ignoring: ", e)
         self._post_setup_dirs(*args, **kwargs)
+
+    def _pre_remove_dirs(self, *args, **kwargs):
+        pass
+    def _post_remove_dirs(self, *args, **kwargs):
+        pass
+
+    def remove_dirs(self, *args, **kwargs):
+        if self.verbose: print("Setting up directories")
+        try:
+            os.makedirs(os.path.join(INSTALL_DIR, self.storage_path))
+        except OSError, e:
+            if self.verbose: print("Ignoring: ", e)
+        self._pre_remove_dirs(*args, **kwargs)
+        for key, value in self.database_data['data_urls'].items():
+            if type(value) == list:
+                try:
+                    if self.verbose: print("Removing %s" % os.path.join(INSTALL_DIR, self.storage_path, key))
+                    map(os.remove, glob.glob(os.path.join(INSTALL_DIR, self.storage_path, key, '*')))
+                    os.rmdir(os.path.join(INSTALL_DIR, self.storage_path, key))
+                except OSError, e:
+                    if self.verbose: print("Ignoring: ", e)
+        self._post_remove_dirs(*args, **kwargs)
+
 
     def _pre_download_file(self, *args, **kwargs):
         pass
@@ -71,8 +105,15 @@ class SetupManager(object):
         return os.path.join(destination_dir, file_name)
 
     def run(self, *args, **kwargs):
-        self.setup_dirs(*args, **kwargs)
-        self.download_files(*args, **kwargs)
+        if self.opts.get('remove', False):
+            self.remove_dirs(*args, **kwargs)
+        elif self.opts.get('update', False):
+            self.remove_dirs(*args, **kwargs)
+            self.setup_dirs(*args, **kwargs)
+            self.download_files(*args, **kwargs)
+        else:
+            self.setup_dirs(*args, **kwargs)
+            self.download_files(*args, **kwargs)
 
     def remove(self, *args, **kwargs):
-        shutil.rmtree(os.path.join(INSTALL_DIR, self.storage_path))
+         shutil.rmtree(os.path.join(INSTALL_DIR, self.storage_path))

@@ -148,9 +148,12 @@ class EntrezEUtilsDriver(object):
         timer = time()
         if self.verbose: print ("Fetching %s from Entrez" % locus_tag)
         get_gene_id_from_locus_tag_response_xml = BeautifulSoup(get_robust(get_gene_by_locus_tag.format(**dict(locus_tag=locus_tag))).text)
-        gene_id = get_gene_id_from_locus_tag_response_xml.find('id').get_text()
-        get_gene_by_gene_id_response = get_robust(get_gene_by_gene_id.format(**dict(gene_id=gene_id)))
-        return get_gene_by_gene_id_response.text
+        try:
+            gene_id = get_gene_id_from_locus_tag_response_xml.find('id').get_text()
+            get_gene_by_gene_id_response = get_robust(get_gene_by_gene_id.format(**dict(gene_id=gene_id)))
+            return get_gene_by_gene_id_response.text
+        except Exception, e:
+            raise EntrezEUtilsDriverException("%s while trying to fetch %s" % (str(e), locus_tag))
 
 
     def find_biosystem_ids_by_gid(self, gid):

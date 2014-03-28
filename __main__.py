@@ -26,12 +26,12 @@ target_args.add_argument("--keep-all-sequences", action="store_true", default=Fa
 
 snp_caller_args = argparser.add_argument_group("SNP Caller Options")
 snp_caller_args.add_argument('-s','--snp-caller', action="store", default = "samtools", choices = ["samtools"], help="Select the SNP Calling Program.[default:samtools]")
-snp_caller_args.add_argument('-b','--snp-caller-binary-location', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
+snp_caller_args.add_argument('-b','--snp-caller-path', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
 
 snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
 snp_anno_args.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
 snp_anno_args.add_argument('--snpeff-path', default = '', action = 'store', required = False, help = "Path to the snpEff.jar and .config files [default: search system path]")
-snp_anno_args.add_argument('--blast-path', default = '', action = 'store', required = False, help = 'Path to the NCBI BLAST executables. [default: search system path]')
+snp_anno_args.add_argument('--blast-path', default = '', action = 'store', required = False, help = 'Path to the NCBI BLAST+ executables. [default: search system path]')
 
 snp_filt_args = argparser.add_argument_group("Variant Filtering Options")
 for filter_type in EXPOSED_FILTERS:
@@ -39,18 +39,13 @@ for filter_type in EXPOSED_FILTERS:
 
 def call_snps(args, **opts):
 	snp_caller_driver = None
-	start_clock = time()
 	if args.snp_caller == "samtools":
 		from pathovar.snp_caller import samtools_snp_caller
-		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_binary_location, **opts)
-
+		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_path, **opts)
 	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, 
 		org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
 		keep_all = args.keep_all_sequences)
 	consensus_sequences = variant_file + ".cns.fq"
-
-	snp_called_time = time()
-	if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
 	return variant_file
 
 def main(args):
@@ -60,7 +55,11 @@ def main(args):
 	opts['cache_dir'] = args.cache_dir
 
 	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
+	start_clock = time()
+
 	variant_file = call_snps(args, **opts)
+	snp_called_time = time()
+	if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
 	variant_locator_driver = None
 	anno_vcf = None
 

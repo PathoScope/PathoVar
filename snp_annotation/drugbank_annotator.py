@@ -5,11 +5,11 @@ import pathovar
 from pathovar.snp_annotation import blast_driver
 
 class DrugBankNucleotideBlastAnnotator(blast_driver.NucleotideDatabaseBlastAnnotatorBase):
-    def __init__(self, storage_path, **opts):
+    def __init__(self, storage_path, bin_dir = '', **opts):
         nucleotide_sequence_db_paths = glob.glob(os.path.join(storage_path, 'nucleotide/*.fasta'))
-        blast_driver.NucleotideDatabaseBlastAnnotatorBase.__init__(self, nucleotide_sequence_db_paths, "drugbank", **opts)
+        blast_driver.NucleotideDatabaseBlastAnnotatorBase.__init__(self, nucleotide_sequence_db_paths, "drugbank", bin_dir ,**opts)
 
 class DrugBankProteinBlastAnnotator(blast_driver.ProteinDatabaseBlastAnnotatorBase):
-    def __init__(self, storage_path, **opts):
+    def __init__(self, storage_path, bin_dir = '', **opts):
         protein_sequence_db_paths = glob.glob(os.path.join(storage_path, 'protein/*.fasta'))
-        blast_driver.ProteinDatabaseBlastAnnotatorBase.__init__(self, protein_sequence_db_paths, "drugbank", **opts)
+        blast_driver.ProteinDatabaseBlastAnnotatorBase.__init__(self, protein_sequence_db_paths, "drugbank", bin_dir, **opts)

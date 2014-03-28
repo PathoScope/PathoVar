@@ -10,9 +10,6 @@ from pathovar.web.ncbi_xml import ET
 
 from pathovar.utils import defline_parser
 
-## Location of the ncbi-blast+ binaries
-BLAST_BIN_DIR = ""
-
 NUCLEOTIDE = "nucl"
 PROTEIN = "prot"
 class BlastAnnotationDriver(object):
@@ -58,7 +55,7 @@ class BlastAnnotationDriver(object):
 	def _run_blast(self, query_file, cmd, **opts):
 		if not self.is_built():
 			raise BlastDriverException("Database Not Built. Cannot run %s on %s" % (cmd, self.database_path))
-		args = dict(evalue = 0.001, num_threads = 1, outfmt = 5, 
+		args = dict(evalue = "0.00001", num_threads = 2, outfmt = 5, 
 			outfile = query_file + "_on_" + self.db_name + "." + cmd + '.xml')
 		for opt in opts:
 			args[opt] = opts[opt]
@@ -84,10 +81,10 @@ class BlastAnnotationDriver(object):
 
 
 class NucleotideDatabaseBlastAnnotatorBase(object):
-	def __init__(self, database_file_paths, db_name_prefix = '', **opts):
+	def __init__(self, database_file_paths, db_name_prefix = '', bin_dir = '',**opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
-		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, NUCLEOTIDE), database_file_paths)
+		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, NUCLEOTIDE, bin_dir), database_file_paths)
 		self.collection_name = db_name_prefix
 		for driver in self.blast_drivers:
 			driver.db_name = db_name_prefix + '_' + driver.db_name
@@ -123,10 +120,10 @@ class NucleotideDatabaseBlastAnnotatorBase(object):
 			proc = blaster.blast_with_nucleotides(query, **opts)
 
 class ProteinDatabaseBlastAnnotatorBase(object):
-	def __init__(self, database_file_paths, db_name_prefix = '', **opts):
+	def __init__(self, database_file_paths, db_name_prefix = '', bin_dir = '',**opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
-		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, PROTEIN), database_file_paths)
+		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, PROTEIN, bin_dir), database_file_paths)
 		self.collection_name = db_name_prefix
 		for driver in self.blast_drivers:
 			driver.db_name = db_name_prefix + '_' + driver.db_name

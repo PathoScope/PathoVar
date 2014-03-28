@@ -78,6 +78,12 @@ class AnnotationReport(object):
             raise KeyError(key)
         self.data[org_name]['entries'][key] = value
 
+    def get_org_by_gid(self, gid):
+        for org_name, org in self.data.items():
+            if org["gid"] == gid:
+                return org_name
+        raise KeyError("No Organism/Genome with GID:%s" % gid)
+
     # Simplifies writing out final annotation. This forms a list of all organisms
     # being annotated. 
     def to_json_file(self):
@@ -107,11 +113,14 @@ class AnnotationReport(object):
         for gene in self.genes:
             entry = self[gene]
             locus_tag = entry['gene_ref_tag']
+            if locus_tag is None:
+                if self.verbose: print(str(gene) + " is not in Gene database (No Locus Tag)")
+                continue
             try:
                 gene_comments = self.annotation_manager.get_gene_comments(locus_tag)
                 self[gene][GENE_DB] = gene_comments.to_json_safe_dict()
             except EntrezEUtilsDriverException, e:
-                if self.verbose: print(str(gene) + " is not in Gene database.")
+                if self.verbose: print(str(gene) + " is not in Gene database. (No Record)")
 
 
 
@@ -123,8 +132,8 @@ class AnnotationReport(object):
                     gene_db_id = self[gene][GENE_DB]['gene_db_id']
                     biosystems = self.annotation_manager.get_biosystems(gene_db_id)
                     self[gene][BIOSYS_DB] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
-                else:
-                    if self.verbose: print(str(gene) + " was not queried. Missing Gene data.")
+                # else:
+                #     if self.verbose: print(str(gene) + " was not queried. Missing Gene data.")
             except EntrezEUtilsDriverException, e:
                 if self.verbose: print(str(gene) + " is not in BioSystem database.")
 
@@ -151,7 +160,12 @@ class AnnotationReport(object):
         return fasta_name
 
     def merge_intergenic_record_chunks(self):
-        for org_name, intergenics in self.intergenic_variants.items():
+        for org_tag, intergenics in self.intergenic_variants.items():
+            # Interpreting the VCF File means loss of data. Use the gid after the colon
+            # in the encoded string to get a key to get the full organism name
+            org_gid = org_tag.split(":")[-1]
+            org_name = self.get_org_by_gid(org_gid)
+            print(org_name)
             cluster_mapping = dict()
             current_cluster = []
             last_pos = intergenics[0].start

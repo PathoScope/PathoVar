@@ -159,6 +159,8 @@ class JSONAnnotationCacheManager(object):
             if self.cache_dir == os.sep + opts.get('cache_dir', '.anno_cache'):
                 self.cache_dir = self.cache_dir[1:]
             os.makedirs(self.cache_dir)
+            # Make it so that anyone can read/write this directory
+            os.chmod(self.cache_dir, '777')
         except OSError, e:
             pass
 
@@ -196,6 +198,7 @@ class JSONAnnotationCacheManager(object):
             raise CachedObjectMissingOrOutdatedException()
 
     def write_to_cache(self, data, query_id, data_type):
+
         cache_file = self.cache_dir + os.sep + 'gene_id-' + query_id
         if data_type == "genome":
             cache_file += JSONAnnotationCacheManager.GENOME_DATA
@@ -210,6 +213,7 @@ class JSONAnnotationCacheManager(object):
         try:
             json.dump(data.to_json_safe_dict(), open(cache_file, 'w'))
         except TypeError, e:
+            print("data = ", str(data.to_json_safe_dict())[:300])
             try:
                 if(self.verbose): print("Cache Write Error", e)
                 os.remove(cache_file)

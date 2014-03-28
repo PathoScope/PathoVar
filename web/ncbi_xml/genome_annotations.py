@@ -40,6 +40,13 @@ class GenBankFeatureFile(object):
         if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
         if self.verbose: print("Searching for Chromosome")
         self.org_name = self.parser.find(".//Org-ref_taxname").text
+        subsource = self.parser.find(".//BioSource_subtype")
+        if subsource is not None:
+            subtype = subsource.find(".//SubSource_subtype")
+            subtype = to_attr_value(subtype, 'value') if subtype is not None else ''
+            subtype_name = subsource.find(".//SubSource_name")
+            subtype_name = subtype_name.text if subtype_name is not None else ''
+            self.org_name += ' ' + subtype + ' ' + subtype_name
         self.genetic_code = int(self.parser.find(".//OrgName_gcode").text)
         self.gid = self.parser.find(".//Seq-id_gi").text
         self.accession = self.parser.find(".//Textseq-id_accession").text + '.' + self.parser.find(".//Textseq-id_version").text
@@ -65,7 +72,7 @@ class GenBankFeatureFile(object):
         if self.verbose: print("Gathering Entries and Features")
         self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self, xml = True), self.parser.findall(".//Seq-entry")) }
         self.genome_entry = self.entries[self.gid]
-        #self.features = map(lambda x: GenBankFeature(x, self), self.parser.findall(".//Seq-feat"))
+        # Create Features for each Seq-feat tag, both in the Genome level sequence and the individuals
         self.features = map(lambda x: GenBankFeature(x, self), self.parser.findall(".//Seq-feat"))
 
         # Features are subsets of Entries. It would be a good idea to compress them to a single entity
@@ -95,12 +102,13 @@ class GenBankFeatureFile(object):
         if self.verbose: print("Computing Genomic Coordinates")
         feature_dict = {}
         for feat in sequence_level_features:
+            # Discard feature if its gid matches the genome gid
             if feat.gid == self.gid: continue
             if feat.starts:
                 if feat.gid not in feature_dict:
                     feature_dict[feat.gid] = feat
                 else:
-                    if feat.end - feat.start > feature_dict[feat.gid].end - feature_dict[feat.gid].start:
+                    if (feat.end - feat.start) > (feature_dict[feat.gid].end - feature_dict[feat.gid].start):
                         feature_dict[feat.gid] = feat
                     if self.mol_type == 'nucl' and feat.end > len(self.chromosome):
                         raise GenBankFileChromosomeLengthMismatch("%r exceeds chromosome size" % feat)
@@ -109,18 +117,26 @@ class GenBankFeatureFile(object):
         by_start = {f.start: f for f in sequence_level_features}
         
         final_features = {}
+        # Reduce all features to a non-redundant set based on
+        # start position and identity. 
         for pos in genome_level_features:
             try:
                 final_features[by_start[pos].gid] = genome_level_features[pos]
                 final_features[by_start[pos].gid].gid = by_start[pos].gid
                 genome_level_features[pos].gid = by_start[pos].gid
             except KeyError, e:
-                # Using a compound of RNA type + locus tag in place of absent gid
+                # Using a compound of title + locus tag in place of absent gid
                 genome_level_features[pos].title = genome_level_features[pos].gene_ref_tag
                 final_features[genome_level_features[pos].title] = genome_level_features[pos]
                 final_features[genome_level_features[pos].title].gid = genome_level_features[pos].title
 
-        self.features = final_features.values()
+
+        merged_features = final_features.values()
+        # If there were no genome level features labeled, then nothing is kept.
+        # Instead, keep all of the merged 'sequence level features'
+        if len(merged_features) == 0:
+            merged_features = sequence_level_features
+        self.features = merged_features
 
         # Using the genomic position data just computed, update coordinate information for the 
         # related entries
@@ -129,10 +145,10 @@ class GenBankFeatureFile(object):
                 entry = self.entries[feat.gid]
                 entry.update_genome_position(feat)
             except:
-                entry = feat.upgrade_to_entry()
-                self.entries[entry.gid] = entry
-
-
+                if feat.gid is not None or feat.gene_ref_tag is not None:
+                    entry = feat.upgrade_to_entry()
+                    self.entries[entry.gid] = entry
+        
         # Remove whole-reference entry
         self.entries.pop(self.gid)
         self.sorted_genes = sorted([gene for gid, gene in self.entries.items()], key=lambda x: x.start)
@@ -158,7 +174,19 @@ class GenBankFeatureFile(object):
         data_dict['schema_version'] = GenBankFeatureFile.CACHE_SCHEMA_VERSION
         data_dict["name"] = self.org_name
         data_dict['genetic_code'] = self.genetic_code
-        data_dict['entries'] = {k: v.to_json_safe_dict() for k,v in self.entries.items() if v.title or  "complete genome" not in v.title}
+        if self.entries is None: 
+            print("Entries is None")
+        data_dict['entries'] = {
+            k: v.to_json_safe_dict() for k,v in 
+            self.entries.items() if v.title or "complete genome" not in v.title
+            }
+        bang = False
+        for x in self.sorted_genes:
+            if x.gid is None:
+                print(x.__dict__)
+                bang = True
+        if bang: exit(1)
+
         data_dict['sorted_genes'] = [x.gid for x in self.sorted_genes]
         return(data_dict)
 
@@ -195,6 +223,7 @@ class GenBankFeature(object):
         self.parser = parser
         self.owner = owner
         self.gid = to_text_strip(parser.find('.//Seq-id_gi'))
+        self.components = None
         # Some features, especially in complex organisms, will have multi-part features. 
         # Capture all of that data
         self.starts = map(to_int, self.parser.findall('.//Seq-interval_from'))
@@ -244,9 +273,12 @@ class GenBankFeature(object):
     
     def merge_features(self, other):
         merge_dict = dict()
+        hold = self.components
         for key in self.__dict__:
            merge_dict[key] = take_def(key, self.__dict__, other.__dict__)
         self.__dict__ = merge_dict
+        self.components = (hold, self, other)
+        
 
 
     def upgrade_to_entry(self):
@@ -261,7 +293,7 @@ class GenBankFeature(object):
         upgrade_dict["gene_prot_name"] = self.gene_prot_name
         upgrade_dict["gid"] = self.gid
         upgrade_dict["accession"] = self.gid
-        upgrade_dict["title"] = self.rna_desc
+        upgrade_dict["title"] = self.rna_desc if self.is_rna else ""
         upgrade_dict["annotations"] = {}
         upgrade_dict["comments"] = []
         upgrade_dict["amino_acid_sequence"] = None
@@ -358,32 +390,35 @@ class GenBankSeqEntry(object):
 
 
     def _from_json(self, json_dict):
-        self.gid = json_dict['gid']
-        self.accession = json_dict['accession']
-        
-        self.strand = json_dict['strand']
-        self.amino_acid_sequence = json_dict['amino_acid_sequence']
-        self.nucleotide_sequence = json_dict['nucleotide_sequence']
-        
-        self.title = json_dict['title']
-        self.comments = json_dict['comments']
-        
-        self.start =  json_dict["start"]
-        self.end = json_dict["end"]
-        self.starts = json_dict["starts"]
-        self.ends =  json_dict["ends"]
-        
-        self.is_partial = json_dict.get('is_partial', False)
-        self.is_pseudo = json_dict.get('is_pseudo', False)
+        try:
+            self.gid = json_dict['gid']
+            self.accession = json_dict['accession']
+            
+            self.strand = json_dict['strand']
+            self.amino_acid_sequence = json_dict['amino_acid_sequence']
+            self.nucleotide_sequence = json_dict['nucleotide_sequence']
+            
+            self.title = json_dict['title']
+            self.comments = json_dict['comments']
+            
+            self.start =  json_dict["start"]
+            self.end = json_dict["end"]
+            self.starts = json_dict["starts"]
+            self.ends =  json_dict["ends"]
+            
+            self.is_partial = json_dict.get('is_partial', False)
+            self.is_pseudo = json_dict.get('is_pseudo', False)
 
-        self.gene_symbol = json_dict["gene_symbol"]
-        self.gene_ref_tag = json_dict["gene_ref_tag"]
-        self.gene_prot_name = json_dict["gene_prot_name"]
+            self.gene_symbol = json_dict["gene_symbol"]
+            self.gene_ref_tag = json_dict["gene_ref_tag"]
+            self.gene_prot_name = json_dict.get("gene_prot_name", None)
 
-        # Only ever set through an upgrade from Feature, which is passed by dictionary
-        self.is_rna = json_dict["is_rna"]
+            # Only ever set through an upgrade from Feature, which is passed by dictionary
+            self.is_rna = json_dict["is_rna"]
 
-        self.annotations = {k:GenBankAnnotation(v, json=True) for k,v in json_dict['annotations'].items()}
+            self.annotations = {k:GenBankAnnotation(v, json=True) for k,v in json_dict['annotations'].items()}
+        except KeyError, e:
+            print("Error finding key %s for %s")
 
     def update_genome_position(self, feature):
         self.starts = feature.starts
@@ -421,9 +456,12 @@ class GenBankSeqEntry(object):
                 data_dict.pop(f)
             except KeyError:
                 pass
+            # Translate nested objects to dictionaries
+        data_dict["annotations"] = {
+                k:v.__dict__ for k,v in 
+                data_dict["annotations"].items()
+            }
 
-        # Translate nested objects to dictionaries
-        data_dict["annotations"] = {k:v.__dict__ for k,v in data_dict["annotations"].items()}
 
         return data_dict
 

@@ -64,12 +64,12 @@ class SamParser(object):
         self.reference_headers = new_headers
         self.reads = new_reads
 
-    def write_out(self):
+    def write_output(self):
         outfile = None
         if  "out" in self.opts:
             outfile = self.opts['out']
         else:
-            outfile = self.file_name + '.filt.sam'
+            outfile = self.file_name[:-3] + 'filt.sam'
         with open(outfile, 'w') as handle:
             handle.write(str(self.meta_headers[0]) + "\n")
             for head_line in self.reference_headers.values():
@@ -79,6 +79,7 @@ class SamParser(object):
             for rname in self.reads:
                 for read in self.reads[rname]:
                     handle.write(str(read))
+        return outfile
 
 class SamHeader(object):
     @classmethod

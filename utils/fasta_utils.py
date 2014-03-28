@@ -73,10 +73,12 @@ class FastaParser(object):
         self.sequences = keepers
         self.outfile_path += '.gis_' + re.sub(r'[/\\:*?"<>|{}]', '_', gene_ids_regex)
 
-    def filter_by_defline(self, defline_regex):
+    def filter_by_defline(self, defline_regex, outfile_append = None):
         keepers = [record for record in self.sequences if re.search(defline_regex, record.defline)]
         self.sequences = keepers
-        self.outfile_path += '.defline_' + re.sub(r'[/\\:*?"<>|{}\s\(\)\!]', '_', defline_regex)
+        if outfile_append is None:
+            outfile_append = '.defline_' + re.sub(r'[/\\:*?"<>|{}\s\(\)\!]', '_', defline_regex)
+        self.outfile_path += outfile_append
 
     ## 
     # Writes the remaining sequences to file in Fasta Format
@@ -89,7 +91,7 @@ class FastaParser(object):
 
 ##
 # As FastaParser, but for the FastQ File format. Works for both
-# 
+# one-line FastQ and multiline FastQ like those made by samtools.
 class FastQParser(FastaParser):
     def __init__(self, file_path, defline_parse_func = defline_parser, **opts):
         FastaParser.__init__(self, file_path, **opts)
@@ -142,6 +144,8 @@ class SequenceRecord(object):
         self.org_name = defline_fields.get('org_name','-')
         self.tax_id = defline_fields.get('tax_id','-')
         self.gene_id = defline_fields.get('gene_id', '-')
+        # Duplicate field to later remove gene_id
+        self.gid = defline_fields.get('gene_id', '-')
         self.sequence = re.sub(r'\n|\r', '', sequence)
         self.attributes = dict(defline_fields, **attributes)
 

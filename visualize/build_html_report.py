@@ -3,7 +3,7 @@ import json
 import os
 import re
 
-TEMPLATE_PATH = 'template.html'
+TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'template.html')
 
 def embed_data(template_file, data_file, output_file = None):
     data = ''.join(open(data_file).readlines())

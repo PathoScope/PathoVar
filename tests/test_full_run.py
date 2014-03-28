@@ -13,8 +13,8 @@ from pathovar.web import annotation_manager
 from pathovar import utils
 from pathovar.utils import vcf_utils
 
-global_args = utils.Namespace()
-argparser.get_default(global_args)
+
+global_args = argparser.parse_args('-r . .'.split())
 global_args.verbose = True
 global_args.clean = True
 
@@ -49,6 +49,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
     
     @classmethod
     def setUpClass(self):
+        print(global_args)
         if os.path.basename(os.getcwd()) != 'tests':
             os.chdir('tests')
 
@@ -74,13 +75,10 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
     def test_step_2_annotate_snps(self):
         print("\nAnnotating SNPs")
         timer = time()
-        filter_args = utils.Namespace()
-        filter_args.alt_depth = global_args.alt_depth
-        filter_args.min_depth = global_args.min_depth
         global annotation_manager_driver
         annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**global_args.__dict__)
         global anno_vcf
-        anno_vcf = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = filter_args, **opts))
+        anno_vcf = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = global_args, **opts))
         self.assertTrue(os.path.exists(anno_vcf), "Calls find_variant_locations() did not produce an annotated VCF File")
         elapsed = time() - timer
         print("%s ms elapsed" % str(elapsed))
