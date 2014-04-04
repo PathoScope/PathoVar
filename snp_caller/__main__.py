@@ -24,7 +24,8 @@ target_args.add_argument("--keep-all-sequences", action="store_true", default=Fa
 
 snp_caller_args = argparser.add_argument_group("SNP Caller Options")
 snp_caller_args.add_argument('-s','--snp-caller', action="store", default = "samtools", choices = ["samtools"], help="Select the SNP Calling Program.[default:samtools]")
-snp_caller_args.add_argument('-b','--snp-caller-path', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
+snp_caller_args.add_argument('--snp-caller-path', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
+snp_caller_args.add_argument('-c','--coverage', action="store_true", default=False, required=False, help = "Compute per-base coverage of alignment")
 
 def call_snps(args, **opts):
     snp_caller_driver = None
@@ -35,7 +36,12 @@ def call_snps(args, **opts):
         org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
         keep_all = args.keep_all_sequences)
     consensus_sequences = variant_file + ".cns.fq"
-    return variant_file
+    result_files = {'variant_file': variant_file, 'consensus': consensus_sequences}
+    if args.coverage:
+        from pathovar.snp_caller import compute_sam_coverage
+        coverage_json = compute_sam_coverage.main(sam_parser = snp_caller_driver.sam_parser)
+        result_files['coverage'] = coverage_json
+    return result_files
 
 def main(args):
     opts = {}

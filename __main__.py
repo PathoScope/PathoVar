@@ -26,7 +26,8 @@ target_args.add_argument("--keep-all-sequences", action="store_true", default=Fa
 
 snp_caller_args = argparser.add_argument_group("SNP Caller Options")
 snp_caller_args.add_argument('-s','--snp-caller', action="store", default = "samtools", choices = ["samtools"], help="Select the SNP Calling Program.[default:samtools]")
-snp_caller_args.add_argument('-b','--snp-caller-path', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
+snp_caller_args.add_argument('--snp-caller-path', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
+snp_caller_args.add_argument('-c','--coverage', action="store_true", default=False, required=False, help = "Compute per-base coverage of alignment")
 
 snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
 snp_anno_args.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
@@ -37,16 +38,21 @@ snp_filt_args = argparser.add_argument_group("Variant Filtering Options")
 for filter_type in EXPOSED_FILTERS:
 	filter_type.customize_parser(snp_filt_args)
 
-def call_snps(args, **opts):
-	snp_caller_driver = None
-	if args.snp_caller == "samtools":
-		from pathovar.snp_caller import samtools_snp_caller
-		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_path, **opts)
-	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, 
-		org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
-		keep_all = args.keep_all_sequences)
-	consensus_sequences = variant_file + ".cns.fq"
-	return variant_file
+# def call_snps(args, **opts):
+# 	snp_caller_driver = None
+# 	if args.snp_caller == "samtools":
+# 		from pathovar.snp_caller import samtools_snp_caller
+# 		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_path, **opts)
+# 	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, 
+# 		org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
+# 		keep_all = args.keep_all_sequences)
+# 	consensus_sequences = variant_file + ".cns.fq"
+# 	result_files = {'variant_file': variant_file, 'consensus': consensus_sequences}
+# 	if args.coverage:
+# 		from pathovar.snp_caller import compute_sam_coverage
+# 		coverage_json = compute_sam_coverage.main(sam_parser = snp_caller_driver.sam_parser)
+# 		result_files['coverage'] = coverage_json
+# 	return result_files
 
 def main(args):
 	opts = {}
@@ -57,7 +63,10 @@ def main(args):
 	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
 	start_clock = time()
 
-	variant_file = call_snps(args, **opts)
+	from pathovar.snp_caller.__main__ import call_snps
+
+	call_result_files = call_snps(args, **opts)
+	variant_file = call_result_files['variant_file']
 	snp_called_time = time()
 	if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
 	variant_locator_driver = None
@@ -77,7 +86,7 @@ def main(args):
 
 	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
 
-	anno_vcf = find_variant_locations(variant_file, annotation_manager_driver = annotation_manager_driver,
+	anno_vcf, variant_locator_driver = find_variant_locations(variant_file, annotation_manager_driver = annotation_manager_driver,
 		**dict(filter_args = filter_args, **opts))
 
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)

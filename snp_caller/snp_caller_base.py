@@ -30,6 +30,7 @@ to a third party SNP Calling program.
         self.consensus_sequence_process = None
         self.reference_genomes = None
         self.sam_file = None
+        self.sam_parser = None
 
 
 ## get_reference_genome
@@ -77,6 +78,7 @@ to a third party SNP Calling program.
         if len(sam_parser.reference_headers) == 0:
             raise SNPCallerException("The kept reference genomes don't appear in the input Sam File. Are you sure this is the right file? %s" % sam_file)
         self.sam_file = filtered_sam_file
+        self.sam_parser = sam_parser
         return filtered_sam_file
 
 

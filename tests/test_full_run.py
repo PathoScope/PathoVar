@@ -19,7 +19,7 @@ global_args.verbose = True
 global_args.clean = True
 
 global_args.snp_caller = "samtools"
-global_args.snp_caller_binary_location = ""
+global_args.coverage = True
 
 global_args.sam_file = "data/updated_outalign.sam.filt.sam"
 
@@ -39,6 +39,8 @@ opts['verbose'] = global_args.verbose
 opts['clean'] = global_args.clean
 opts['cache_dir'] = global_args.cache_dir
 
+
+call_results_files = None
 variant_file = None
 anno_vcf = None
 annotation_manager_driver = None
@@ -46,7 +48,6 @@ annotation_report_driver = None
 ref_fa = None
 
 class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
-    
     @classmethod
     def setUpClass(self):
         print(global_args)
@@ -62,16 +63,16 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         except:
             pass
 
-
     def test_step_1_call_snps(self):
         print("\nCalling SNPs")
         timer = time()
-        global variant_file
-        variant_file = call_snps(global_args, **opts)
+        global variant_file, call_results_files
+        call_results_files = call_snps(global_args, **opts)
+        variant_file = call_results_files['variant_file']
         self.assertTrue(os.path.exists(variant_file), "Calls to call_snps() did not produce a VCF File")
         elapsed = time() - timer
         print("%s ms elapsed" % str(elapsed))
-        
+
     def test_step_2_annotate_snps(self):
         print("\nAnnotating SNPs")
         timer = time()
@@ -82,7 +83,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         self.assertTrue(os.path.exists(anno_vcf), "Calls find_variant_locations() did not produce an annotated VCF File")
         elapsed = time() - timer
         print("%s ms elapsed" % str(elapsed))
-    
+
     def test_step_3_external_database_search(self):
         timer = time()
         global annotation_report_driver

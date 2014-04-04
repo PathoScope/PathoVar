@@ -44,6 +44,17 @@ class VariantLocator(object):
         anno_variant = vcf_utils.AnnotatedVariant(variant, annotations)
         return anno_variant
 
+    ## 
+    # Locates uncovered regions within genic or intergenic reigons
+    def annotate_uncovered_genome_regions(self, genome_region_dict):
+        for genome_gi, regions in genome_region_dict.items():
+            opt_args = dict(verbose=self.verbose)
+            for region in regions:
+                genome_annotations = self.annotation_manager.get_genome_annotation(genome_gi)
+                #Mutate the UncoveredRegion object
+                region.location = genome_annotations.locate_snp_site(region).gid
+        return genome_region_dict
+
     ##
     #
     def annotate_all_snps(self):

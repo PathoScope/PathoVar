@@ -39,18 +39,19 @@ class GenBankFeatureFile(object):
         self.parser = ET.fromstring(xml)
         if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
         if self.verbose: print("Searching for Chromosome")
-        self.org_name = self.parser.find(".//Org-ref_taxname").text
-        subsource = self.parser.find(".//BioSource_subtype")
-        if subsource is not None:
-            subtype = subsource.find(".//SubSource_subtype")
-            subtype = to_attr_value(subtype, 'value') if subtype is not None else ''
-            subtype_name = subsource.find(".//SubSource_name")
-            subtype_name = subtype_name.text if subtype_name is not None else ''
-            self.org_name += ' ' + subtype + ' ' + subtype_name
-        self.genetic_code = int(self.parser.find(".//OrgName_gcode").text)
         self.gid = self.parser.find(".//Seq-id_gi").text
-        self.accession = self.parser.find(".//Textseq-id_accession").text + '.' + self.parser.find(".//Textseq-id_version").text
         if self.mol_type == 'nucl':
+            self.org_name = self.parser.find(".//Org-ref_taxname").text
+            subsource = self.parser.find(".//BioSource_subtype")
+            if subsource is not None:
+                subtype = subsource.find(".//SubSource_subtype")
+                subtype = to_attr_value(subtype, 'value') if subtype is not None else ''
+                subtype_name = subsource.find(".//SubSource_name")
+                subtype_name = subtype_name.text if subtype_name is not None else ''
+                self.org_name += ' ' + subtype + ' ' + subtype_name
+            self.genetic_code = int(self.parser.find(".//OrgName_gcode").text)
+            self.accession = self.parser.find(".//Textseq-id_accession").text + '.' + self.parser.find(".//Textseq-id_version").text
+        #if self.mol_type == 'nucl':
             self.chromosome = self.parser.findall('.//IUPACna')
             if self.chromosome:
                 self.chromosome = ''.join(map(to_text_strip, self.chromosome))
@@ -190,7 +191,10 @@ class GenBankFeatureFile(object):
         data_dict['sorted_genes'] = [x.gid for x in self.sorted_genes]
         return(data_dict)
 
-    def locate_snp_site(self, snp, reset=True):
+    ##
+    # 
+    def locate_snp_site(self, snp, reset=True, forward_check = False):
+        results = []
         if reset:
             self.last_entry_ind = 0
         for ind, entry in enumerate(self.sorted_genes[self.last_entry_ind:]):
@@ -200,6 +204,9 @@ class GenBankFeatureFile(object):
             or (snp.start <= entry.start and snp.end >= entry.start):
                 #if self.verbose: print("SNP Location %r mapped within %r" % ([snp.start, snp.end], entry))
                 self.last_entry_ind += ind
+                if(forward_check):
+                    results.append(entry)
+                    continue
                 return entry
             if snp.start < entry.start and snp.end < entry.start:
                 # return intergenic relative to this entry and the previous one
@@ -207,8 +214,20 @@ class GenBankFeatureFile(object):
                 downstream_id = entry.gid
                 if(self.last_entry_ind + ind != 0):
                     upstream_id = self.sorted_genes[ind - 1].gid
-                return IntergenicEntry(upstream_id, downstream_id)
-
+                entry = IntergenicEntry(upstream_id, downstream_id)
+                if(forward_check):
+                    results.append(entry)
+                    continue
+                return entry
+            if snp.start < entry.start and snp.end > entry.end and forward_check:
+                print('big step')
+                results.append(entry)
+        # Forward-Check mode expects a list result
+        if forward_check:
+            if len(results) > 0:
+                return results
+            else:
+                return [IntergenicEntry(self.sorted_genes[-1].gid)]
         return IntergenicEntry(self.sorted_genes[-1].gid)
 
     def __repr__(self):
@@ -333,6 +352,7 @@ class GenBankSeqEntry(object):
         self.is_partial = None
         self.is_pseudo = None
         self.is_rna = False
+        self.is_intergenic = False
 
         self.amino_acid_sequence = None
         # Prune later once starts and ends are set
@@ -469,6 +489,13 @@ class IntergenicEntry(object):
     def __init__(self, upstream = None, downstream = None):
         self.upstream_id = upstream
         self.downstream_id = downstream
+
+    @property
+    def gid(self):
+        return [self.upstream_id, self.downstream_id]
+
+    def is_intergenic(self):
+        return True
 
     def to_info_field(self):
         return "(Intergenic:%s~%s)" % (self.upstream_id, self.downstream_id)

@@ -17,6 +17,8 @@ argparser.add_argument("-v", "--verbose", action = "store_true", required = Fals
 argparser.add_argument("vcf_file", help = "The variant call file to annotate")
 argparser.add_argument("--test", action = "store_true", required = False)
 argparser.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
+argparser.add_argument("--coverage", action = "store", type=str, default=False, help="The path to the coverage map .json file produced by calling snps with the --coverage setting." \
+																							"If included, coverage results will be included in the output")
 vcf_filter_args = argparser.add_argument_group("VCF Filters")
 for filter_type in EXPOSED_FILTERS:
 	filter_type.customize_parser(vcf_filter_args)
@@ -38,13 +40,15 @@ def main(args):
 	filter_args.intersection = args.intersection
 
 	opts['filter_args'] = filter_args
-
+	coverage_data = None
+	if args.coverage:
+		from pathovar.snp_caller import compute_sam_coverage
+		coverage_data = compute_sam_coverage.from_json(args.coverage)
 	if not os.path.exists(args.vcf_file): raise IOError("Input .vcf File Not Found")
 	timer = time()
 	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
-
-	anno_vcf = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
-	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
+	anno_vcf, variant_locator_driver = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
+	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, coverage_data = coverage_data, **opts)
 
 	anno_json = annotation_report_driver.to_json_file()
 
@@ -60,7 +64,7 @@ def find_variant_locations(vcf_file, annotation_manager_driver, **opts):
 	variant_locator_driver = locate_variant.VariantLocator(vcf_file, annotation_manager = annotation_manager_driver, **opts)
 	variant_locator_driver.annotate_all_snps()
 	anno_vcf = variant_locator_driver.write_annotated_vcf()
-	return anno_vcf
+	return anno_vcf, variant_locator_driver
 
 def run_snpeff(args, anno_vcf, annotation_report_driver, **opts):
 	try:
@@ -73,8 +77,14 @@ def run_snpeff(args, anno_vcf, annotation_report_driver, **opts):
 	except snpeff_driver.snpEffException, e:
 		print(e)
 
-def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
+def run_annotation_report(args, anno_vcf, annotation_manager_driver, coverage_data = None, **opts):
 	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)
+	annotation_report_driver.merge_intergenic_record_chunks()
+	#try:
+	if args.coverage and coverage_data is not None:
+		annotation_report_driver.compute_coverage_span(coverage_data)
+	#except Exception, e:
+	#	print("Error occurred computing coverage, %r" % e)
 	ref_prot_fa = annotation_report_driver.generate_reference_protein_fasta_for_variants()
 
 	# Load internal configuration file
@@ -102,7 +112,6 @@ def run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts):
 
 		annotation_report_driver.get_entrez_gene_annotations()
 		annotation_report_driver.get_entrez_biosystem_pathways()
-		annotation_report_driver.merge_intergenic_record_chunks()
 
 		run_snpeff(args, anno_vcf, annotation_report_driver, **opts)
 
