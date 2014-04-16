@@ -103,9 +103,9 @@ class NucleotideDatabaseBlastAnnotatorBase(object):
 						errd_blast_driver = self.blast_drivers[i]
 						print("Driver %d" % i)
 						print("STDOUT")
-						print(errd_blast_driver.stdout)
+						print(errd_blast_driver.process.stdout.readlines())
 						print("STDERR")
-						print(errd_blast_driver.stderr)
+						print(errd_blast_driver.process.stderr.readlines())
 			raise BlastDriverException("A %s Blast job failed %r" % (str(type(self)), ret_codes))
 		result_files_dict = {self.blast_drivers[ind].db_name:BlastResultsXMLParser(outfile) for ind, outfile in enumerate(self.outfiles)}
 		return result_files_dict
@@ -142,9 +142,9 @@ class ProteinDatabaseBlastAnnotatorBase(object):
 						errd_blast_driver = self.blast_drivers[i]
 						print("Driver %d" % i)
 						print("STDOUT")
-						print(errd_blast_driver.stdout)
+						print(errd_blast_driver.process.stdout.readlines())
 						print("STDERR")
-						print(errd_blast_driver.stderr)
+						print(errd_blast_driver.process.stderr.readlines())
 
 			raise BlastDriverException("A %s Blast job failed %r" % (str(type(self)), ret_codes))
 		result_files_dict = {self.blast_drivers[ind].db_name:BlastResultsXMLParser(outfile) for ind, outfile in enumerate(self.outfiles)}

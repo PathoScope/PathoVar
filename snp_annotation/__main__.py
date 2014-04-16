@@ -47,7 +47,10 @@ def main(args):
 	if not os.path.exists(args.vcf_file): raise IOError("Input .vcf File Not Found")
 	timer = time()
 	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
+
+	# Retrieve the annotated VCF and the VariantLocator instance for future reuse
 	anno_vcf, variant_locator_driver = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
+	
 	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, coverage_data = coverage_data, **opts)
 
 	anno_json = annotation_report_driver.to_json_file()

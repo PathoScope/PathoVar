@@ -5,8 +5,10 @@ import glob
 from time import time
 
 import pathovar
-from pathovar.__main__ import call_snps, argparser
+from pathovar.__main__ import argparser
+from pathovar.snp_caller.__main__ import call_snps
 from pathovar.snp_annotation.__main__ import find_variant_locations, run_annotation_report
+from pathovar.visualize.build_html_report import build_report
 
 from pathovar.web import annotation_manager
 
@@ -34,11 +36,12 @@ global_args.cache_dir = '.anno_cache/'
 global_args.min_depth = 5
 global_args.alt_depth = 0.4
 
+global_args.snpeff_path = os.environ['SNPEFF_PATH']
+
 opts = {}
 opts['verbose'] = global_args.verbose
 opts['clean'] = global_args.clean
 opts['cache_dir'] = global_args.cache_dir
-
 
 call_results_files = None
 variant_file = None
@@ -46,13 +49,20 @@ anno_vcf = None
 annotation_manager_driver = None
 annotation_report_driver = None
 ref_fa = None
+result_json = None
 
 class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
+    call_dir = None
     @classmethod
     def setUpClass(self):
         print(global_args)
-        if os.path.basename(os.getcwd()) != 'tests':
-            os.chdir('tests')
+        if os.path.basename(os.getcwd()) != os.path.dirname(__file__):
+            self.call_dir = os.getcwd()
+            os.chdir(os.path.dirname(__file__))
+
+    def tearDownClass(self):
+        if self.call_dir is not None:
+            os.chdir(self.call_dir)
 
     def test_step_0_clean_up_files(self):
         print("\nClearing Files")
@@ -68,6 +78,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         timer = time()
         global variant_file, call_results_files
         call_results_files = call_snps(global_args, **opts)
+        print(call_results_files)
         variant_file = call_results_files['variant_file']
         self.assertTrue(os.path.exists(variant_file), "Calls to call_snps() did not produce a VCF File")
         elapsed = time() - timer
@@ -79,19 +90,23 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         global annotation_manager_driver
         annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**global_args.__dict__)
         global anno_vcf
-        anno_vcf = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = global_args, **opts))
+        anno_vcf, variant_locator_driver = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = global_args, **opts))
         self.assertTrue(os.path.exists(anno_vcf), "Calls find_variant_locations() did not produce an annotated VCF File")
         elapsed = time() - timer
         print("%s ms elapsed" % str(elapsed))
 
     def test_step_3_external_database_search(self):
         timer = time()
-        global annotation_report_driver
+        global annotation_report_driver, result_json
         annotation_report_driver = run_annotation_report(global_args, anno_vcf, annotation_manager_driver, **opts)
         result_json = annotation_report_driver.to_json_file()
         self.assertTrue(os.path.exists(result_json), "Calls to run_annotation_report() did not produce an a JSON File")
         elapsed = time() - timer
         print("%s ms elapsed" % str(elapsed))
 
+    def test_step_4_build_report(self):
+        report_file = build_report(result_json)
+        self.assertTrue(os.path.exists(report_file), "Calls to build_report() did not produce an an HTML File")
+        
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,7 @@
+import json
 import os
 import re
-import json
+import stat
 
 from pathovar.web.entrez_eutils import EntrezEUtilsDriver
 from pathovar.web.ncbi_xml.genome_annotations import GenBankFeatureFile
@@ -19,10 +20,14 @@ class EntrezAnnotationManager(object):
 
         # Try to create a data persistence cache on disk using the chosen driver
         self.cache_type = opts.get('cache_type', 'json')
-        if self.cache_type == 'json':
-            self.cache_manager = JSONAnnotationCacheManager(**opts)
-        elif self.cache_type == None:
-            self.cache_manager = None
+        try:
+            if self.cache_type == 'json':
+                self.cache_manager = JSONAnnotationCacheManager(**opts)
+            elif self.cache_type == None:
+                self.cache_manager = AnnotationCacheManagerBase(**opts)
+        except Exception, e:
+            # An error occurred initializing the cache manager, use base class stubs instead
+            self.cache_manager = AnnotationCacheManagerBase(**opts)
 
     def genome_to_accesion_and_codon_table(self):
         mapping = {gid:{'accession': genome.accession, "codon_table":genome.genetic_code} for gid, genome in self.genome_annotations.items()}
@@ -142,6 +147,15 @@ class AnnotationCacheManagerBase(object):
         self.cache_dir = opts.get("cache_dir", AnnotationCacheManagerBase.DEFAULT_CACHE_DIR)
         self.verbose = opts.get('verbose', False)
 
+    ##
+    # Stub
+    def load_from_cache(self, query_id, data_type):
+        raise CachedObjectMissingOrOutdatedException()
+
+    ##
+    # Stub
+    def write_to_cache(self, data, query_id, data_type):
+        pass
 
 class JSONAnnotationCacheManager(object):
     GENOME_DATA = '.anno.json'
@@ -160,7 +174,8 @@ class JSONAnnotationCacheManager(object):
                 self.cache_dir = self.cache_dir[1:]
             os.makedirs(self.cache_dir)
             # Make it so that anyone can read/write this directory
-            os.chmod(self.cache_dir, '777')
+            os.chmod(self.cache_dir, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IWGRP | \
+                                     stat.S_IROTH | stat.S_IWOTH)
         except OSError, e:
             pass
 

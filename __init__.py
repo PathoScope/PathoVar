@@ -25,7 +25,7 @@ DEFAULT_EXTERNAL_DATABASE_CONFIG = {
                 "http://arpcard.mcmaster.ca/obo-download/aro.obo"
             ]},
         "storage_path": "databases/comprehensive_antibiotic_resistance_database/",
-        "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
+        "setup_script": "setup_external_data/comprehensive_antibiotic_resistance_database_setup.py",
         "appropriate_organisms": [
             "*"
         ],
@@ -44,21 +44,15 @@ DEFAULT_EXTERNAL_DATABASE_CONFIG = {
     },
     "drugbank": {
         "data_urls": {
-            "nucleotide": [
-                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_target.fasta.zip",
-                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_enzyme.fasta.zip",
-                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_transporter.fasta.zip",
-                "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_carrier.fasta.zip"
-            ],
             "protein":[
-                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_target.fasta.zip",
-                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_enzyme.fasta.zip",
-                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_transporter.fasta.zip",
-                "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_carrier.fasta.zip"
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_carrier.fasta.gz?attredirects=0&d=1",
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_enzyme.fasta.gz?attredirects=0&d=1",
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_target.fasta.gz?attredirects=0&d=1",
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_transporter.fasta.gz?attredirects=0&d=1"
             ]
         },
         "storage_path": "databases/drugbank/",
-        "setup_script": "setup/drugbank_setup.py",
+        "setup_script": "setup_external_data/drugbank_setup.py",
         "appropriate_organisms": [
             "*"
         ],
@@ -73,7 +67,7 @@ DEFAULT_EXTERNAL_DATABASE_CONFIG = {
 
          },
          "storage_path": "databases/immune_epitope_database/",
-         "setup_script": "setup/immune_epitope_database_setup.py",
+         "setup_script": "setup_external_data/immune_epitope_database_setup.py",
          "appropriate_organisms": [
              "*"
          ],
@@ -150,7 +144,7 @@ DEFAULT_CONFIG = {
                     "http://arpcard.mcmaster.ca/obo-download/aro.obo"
                 ]},
             "storage_path": "databases/comprehensive_antibiotic_resistance_database/",
-            "setup_script": "setup/comprehensive_antibiotic_resistance_database_setup.py",
+            "setup_script": "setup_external_data/comprehensive_antibiotic_resistance_database_setup.py",
             "appropriate_organisms": [
                 "*"
             ],
@@ -183,7 +177,7 @@ DEFAULT_CONFIG = {
                 ]
             },
             "storage_path": "databases/drugbank/",
-            "setup_script": "setup/drugbank_setup.py",
+            "setup_script": "setup_external_data/drugbank_setup.py",
             "appropriate_organisms": [
                 "*"
             ],
@@ -198,7 +192,7 @@ DEFAULT_CONFIG = {
 
              },
              "storage_path": "databases/immune_epitope_database/",
-             "setup_script": "setup/immune_epitope_database_setup.py",
+             "setup_script": "setup_external_data/immune_epitope_database_setup.py",
              "appropriate_organisms": [
                  "*"
              ],

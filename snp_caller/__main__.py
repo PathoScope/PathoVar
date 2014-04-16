@@ -36,6 +36,7 @@ def call_snps(args, **opts):
         org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
         keep_all = args.keep_all_sequences)
     consensus_sequences = variant_file + ".cns.fq"
+    # variant_file is a list of vcf files called, but only one should be generated in this case
     result_files = {'variant_file': variant_file, 'consensus': consensus_sequences}
     if args.coverage:
         from pathovar.snp_caller import compute_sam_coverage
