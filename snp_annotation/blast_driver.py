@@ -160,6 +160,8 @@ class ProteinDatabaseBlastAnnotatorBase(object):
 			proc = blaster.blast_with_proteins(query, **opts)
 
 ## Blast Results Parsing
+# Parses the XML output of the BLAST+ program for simple searches like blastn, blastp, or blastx.
+# The resulting object is a 
 class BlastResultsXMLParser(object):
 	def __init__(self, file_path, **opts):
 		self.file_path = file_path
@@ -171,7 +173,6 @@ class BlastResultsXMLParser(object):
 
 class BlastResultsQuery(object):
 	def __init__(self, parser):
-		#self.parser = parser
 		self.query_def = parser.find(".//Iteration_query-def").text
 		self.__len__ = len(parser.find(".//Iteration_query-len").text)
 		self.hits = sorted([BlastResultsHit(h) for h in parser.findall(".//Hit")], key=lambda x: x.e_value)
@@ -187,7 +188,6 @@ class BlastResultsQuery(object):
 
 class BlastResultsHit(object):
 	def __init__(self, parser):
-		#self.parser = parser
 		self.hit_def = parser.find('.//Hit_def').text
 		self.__len__ = int(parser.find(".//Hit_len").text)
 		self.hsps = [BlastResultsHSP(hsp) for hsp in parser.findall(".//Hsp")]
@@ -205,7 +205,7 @@ class BlastResultsHit(object):
 
 class BlastResultsHSP(object):
 	def __init__(self, parser):
-		#self.parser = parser
+		
 		self.e_value = float(parser.find(".//Hsp_evalue").text)
 		# Query range
 		self.query_from = int(parser.find(".//Hsp_query-from").text)

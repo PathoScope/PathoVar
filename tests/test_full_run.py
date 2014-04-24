@@ -56,13 +56,15 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         print(global_args)
-        if os.path.basename(os.getcwd()) != os.path.dirname(__file__):
-            self.call_dir = os.getcwd()
-            os.chdir(os.path.dirname(__file__))
+        self.call_dir = os.getcwd()
+        test_path = os.path.dirname(__file__)
+        if test_path == "":
+            test_path = "."
+        os.chdir(test_path)
 
+    @classmethod
     def tearDownClass(self):
-        if self.call_dir is not None:
-            os.chdir(self.call_dir)
+        os.chdir(self.call_dir)
 
     def test_step_0_clean_up_files(self):
         print("\nClearing Files")

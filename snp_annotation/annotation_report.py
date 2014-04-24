@@ -119,8 +119,8 @@ class AnnotationReport(object):
     def to_json_file(self):
         if self.verbose: print("Saving results")
         json_data = [deepcopy(org) for org in self.data.values() if len(org['entries'].keys()) > 0]
-        for org_name, organism in json_data.items():
-            for gid, entry in organism['entries']:
+        for organism in json_data:
+            for gid, entry in organism['entries'].items():
                 normalize_entry_model(entry)
                 
         for val in json_data:
