@@ -12,7 +12,7 @@ from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_va
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
-    CACHE_SCHEMA_VERSION = '0.3.9d'
+    CACHE_SCHEMA_VERSION = '0.3.10'
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
@@ -29,6 +29,7 @@ class GenBankFeatureFile(object):
         self.features = []
         self.sorted_genes = []
         self.last_entry_ind = 0
+        self.db_tag_data = dict()
         if 'xml' in opts:
             self._parse_xml(data)
         elif 'json' in opts:
@@ -42,13 +43,38 @@ class GenBankFeatureFile(object):
         self.gid = self.parser.find(".//Seq-id_gi").text
         if self.mol_type == 'nucl':
             self.org_name = self.parser.find(".//Org-ref_taxname").text
+            org_mod_name = self.parser.find(".//OrgName_mod")
+            if org_mod_name is not None:
+                org_mod_subtype = org_mod_name.find(".//OrgMod_subtype")
+                org_mod_subtype = to_attr_value(org_mod_subtype, 'value') if org_mod_subtype is not None else ""
+
+                org_mod_subname = org_mod_name.find(".//OrgMod_subname")
+                org_mod_subname = org_mod_subname.text if org_mod_subname is not None else ""
+                self.org_name += " " + org_mod_subtype + " " + org_mod_subname
+            
             subsource = self.parser.find(".//BioSource_subtype")
             if subsource is not None:
-                subtype = subsource.find(".//SubSource_subtype")
-                subtype = to_attr_value(subtype, 'value') if subtype is not None else ''
-                subtype_name = subsource.find(".//SubSource_name")
-                subtype_name = subtype_name.text if subtype_name is not None else ''
-                self.org_name += ' ' + subtype + ' ' + subtype_name
+                subtype = subsource.findall(".//SubSource_subtype")
+                subtype_name = subsource.findall(".//SubSource_name")
+                #subtype = to_attr_value(subtype, 'value') if subtype is not None else ''
+                #subtype_name = subtype_name.text if subtype_name is not None else ''
+                for i in range(len(subtype_name)):
+                    #subtype_i = subtype[i]
+                    subtype_name_i = subtype_name[i]
+                    #subtype_i = to_attr_value(subtype_i, 'value') if subtype_i is not None else ''
+                    subtype_name_i = subtype_name_i.text if subtype_name_i is not None else ''
+                    self.org_name += ' ' + subtype_name_i
+            db_tags = self.parser.find(".//Org-ref_db")
+            if db_tags is not None:
+                db_tags = db_tags.findall(".//Dbtag")
+                self.db_tag_data = dict()
+                for tag in db_tags:
+                    db_name = tag.find(".//Dbtag_db")
+                    db_name = db_name.text if db_name is not None else ""
+                    tag_data = to_text_strip(tag.find(".//Dbtag_tag"))
+                    self.db_tag_data[db_name] = tag_data
+
+
             self.genetic_code = int(self.parser.find(".//OrgName_gcode").text)
             self.accession = self.parser.find(".//Textseq-id_accession").text + '.' + self.parser.find(".//Textseq-id_version").text
         #if self.mol_type == 'nucl':
@@ -164,6 +190,7 @@ class GenBankFeatureFile(object):
         self.entries = {k:GenBankSeqEntry(v, self, **self.opts) for k,v in json_dict['entries'].items()}
         self.sorted_genes = json_dict["sorted_genes"]
         self.sorted_genes = [self.entries[gid] for gid in self.sorted_genes]
+        self.db_tag_data = json_dict['db_tag_data']
         if self.verbose: print("Loading from JSON Complete (%rs)" % (time() - timer))
 
 
@@ -187,8 +214,8 @@ class GenBankFeatureFile(object):
                 print(x.__dict__)
                 bang = True
         if bang: exit(1)
-
         data_dict['sorted_genes'] = [x.gid for x in self.sorted_genes]
+        data_dict['db_tag_data'] = self.db_tag_data
         return(data_dict)
 
     ##

@@ -19,8 +19,11 @@ def variant_to_dict(var):
             "_var_type": var.var_type, 
             "var_type": ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) 
                     else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) 
-                        else "deletion"))
-                }
+                        else "deletion")),
+            "eff": {
+                "type": "UNKNOWN" if len(str(var.REF)) == len(map(str, var.ALT)[0]) else "FRAME_SHIFT"
+            }
+        }
 
 # Translate an entry to it's most common identifiers
 def gene_name(entry):
@@ -44,6 +47,35 @@ def spans_variant(entry, start, stop):
 
     return False if len(vars_spanned) == 0 else vars_spanned
 
+def score_heuristic(entry, snp_score = 1, missense_score = 2, frame_shift_score = 10, 
+                    blast_hit_score = 2, multi_drug_bonus = 1, uncov_region_score = 1,
+                    **opts):
+    variant_score = 1
+    for variant in entry["variants"]:
+        if variant["eff"]["type"] in ["UNKNOWN", "SYNONYMOUS_CODING"]:
+            variant_score += snp_score
+        elif variant["eff"]["type"] in ["NON_SYNONYMOUS_CODING"]:
+            variant_score += missense_score
+        elif variant["eff"]["type"] in ["FRAME_SHIFT", "NON_SYNONYMOUS_START", "STOP_GAINED", \
+                                        "STOP_LOST", "START_LOST", "SYNONYMOUS_STOP", \
+                                        "RARE_AMINO_ACID"]:
+            variant_score += frame_shift_score
+    
+    blast_score = 1
+    for blast_db, blast_hits in entry['blast_hits'].items():
+        for hit in blast_hits:
+            blast_score += blast_hit_score
+            if re.findall(r'multidrug', hit['hit_def']):
+                blast_score += multi_drug_bonus
+
+    coverage_score = 1
+    for region in entry["uncovered_regions"]:
+        coverage_score += uncov_region_score
+
+    entry["score"] = variant_score * blast_score * coverage_score
+    return entry
+
+
 
 # Makes sure that all entries have all of the possible "extra"
 # record data included. 
@@ -62,6 +94,10 @@ def normalize_entry_model(entry):
         entry["variants"] = []
     if "amino_acid_sequence" not in entry:
         entry["amino_acid_sequence"] = ""
+    if "blast_hits" not in entry:
+        entry["blast_hits"] = {}
+
+
 
 
 
@@ -108,6 +144,10 @@ class AnnotationReport(object):
             raise KeyError(key)
         self.data[org_name]['entries'][key] = value
 
+    def __iter__(self):
+        for gid in self.genes:
+            yield self[gid]
+
     def get_org_by_gid(self, gid):
         for org_name, org in self.data.items():
             if org["gid"] == gid:
@@ -136,6 +176,7 @@ class AnnotationReport(object):
             if val.org_name + ':' + val.gid not in self.data:
                 self.data[val.org_name + ':' + val.gid] = {'name':val.org_name, 
                     'accession': val.accession, 'gid': val.gid,
+                    'db_tag_data': val.db_tag_data,
                     'chromosome': val.chromosome, 'entries':{}
                  }
         for gene in self.genes:
@@ -152,6 +193,10 @@ class AnnotationReport(object):
         if self.verbose: print("Getting Genbank Gene Comment Annotations")
         for gene in self.genes:
             entry = self[gene]
+            if entry['is_intergenic']:
+                continue
+            if 'gene_ref_tag' not in entry:
+                entry['gene_ref_tag'] = None
             locus_tag = entry['gene_ref_tag']
             if locus_tag is None:
                 if self.verbose: print(str(gene) + " is not in Gene database (No Locus Tag)")
@@ -235,10 +280,16 @@ class AnnotationReport(object):
                     cluster['gid'] = self.data[org_name]['gid']
                     cluster['accession'] = self.data[org_name]['accession']
                     cluster_mapping[cluster['title']] = cluster
+                    self.genes[cluster['title']] = {'gi': cluster['title'], 
+                                                    'acc': self.data[org_name]['accession'],
+                                                    'strand': '?',
+                                                    'title': cluster['title']
+                                                    }
                     current_cluster = []
                     last_pos = var.start
                 current_cluster.append(var)
             self.data[org_name]['entries'].update(cluster_mapping)
+
 
     ##
     # For each gene, compute for each annotation whether it spans any of the variants found
@@ -288,6 +339,19 @@ class AnnotationReport(object):
                         var = variants[0]
                         var['eff'] = nth_effect
 
+
+    def normalize_all_entries(self):
+        if self.verbose : print("Normalizing all entry structures")
+        for org_name, org_data in self.data.items():
+            for gid, entry in org_data['entries'].items():
+                normalize_entry_model(entry)
+
+    def score_all_entries(self):
+        if self.verbose : print("Running scoring heuristic")
+        for org_name, org_data in self.data.items():
+            for gid, entry in org_data['entries'].items():
+                score_heuristic(entry)
+                print(gid, entry["score"])
 
     ##
     # Consume coverage data to get mean coverage for each gene that contains a variant
@@ -351,6 +415,12 @@ class AnnotationReport(object):
                     else:
                         # Build new gene entry
                         org_val['entries'][location.gid] = location.to_json_safe_dict()
+                        self.genes[location.gid] = {
+                            "acc": location.accession,
+                            "gi": location.gid,
+                            "strand": location.strand,
+                            "title": location.title
+                        }
                         entry = org_val['entries'][location.gid]
                         if 'uncovered_regions' not in org_val['entries'][location.gid]:
                             entry['uncovered_regions'] = []

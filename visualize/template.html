@@ -6,7 +6,9 @@
 <title>Variant Viewer</title>
 <script src="https://sites.google.com/site/mobiuskleinscripthost/resources/js/lib.min.js"></script>
 <script src="http://netdna.bootstrapcdn.com/bootstrap/3.1.0/js/bootstrap.min.js"></script>
+<script type="text/javascript" src='https://sites.google.com/site/mobiuskleinscripthost/resources/js/drug_links.js'></script>
 <script src="https://sites.google.com/site/mobiuskleinscripthost/resources/js/main.min.js"></script>
+<link rel="stylesheet" type="text/css" href="http://glyphicons.getbootstrap.com/css/bootstrap-glyphicons.css">
 <link rel="stylesheet" type="text/css" href="https://sites.google.com/site/mobiuskleinscripthost/resources/css/main.min.css">
 <script id='data-hook' async></script>
 
@@ -48,10 +50,12 @@
     <div id='core-content' class='col-md-9 tab-content'>
       <p id="active-sequence"></p>
       <ul id='tabber' class="nav nav-tabs">
-        <li class='active'><a id='snp-tab' href="#snp-container" data-toggle="tab">Variant List<span class="badge"></span></a></li>
-        <li><a id='sequence-tab' href="#sequence-container" data-toggle="tab">Sequence Summary<span class="badge"></span></a></li>
-        <li><a id='seq-anno-tab' href="#seq-anno-container" data-toggle='tab'>Annotations<span class="badge"></span></a></li>
-        <li><a id='blast-tab' href="#blast-hits-container" data-toggle="tab">Blast Hits<span class="badge"></span></a></li>
+        <li class='active main-tab'><a id='snp-tab' href="#snp-container" data-toggle="tab">Variant List <span class="badge"></span></a></li>
+        <li class='main-tab'><a id='sequence-tab' href="#sequence-container" data-toggle="tab">Sequence Summary <span class="badge"></span></a></li>
+        <li class='main-tab'><a id='seq-anno-tab' href="#seq-anno-container" data-toggle='tab'>Annotations <span class="badge"></span></a></li>
+        <!-- <li><a id='blast-hits-tab' href="#blast-hits-container" data-toggle="tab">Blast Hits <span class="badge"></span></a></li> -->
+        <li class='main-tab'><a id='drugbank-tab' href="#drugbank-container" data-toggle="tab">DrugBank <span class="badge"></span></a></li>
+        <li class='main-tab'><a id='comprehensive_antibiotic_resistance_database-tab' href="#comprehensive_antibiotic_resistance_database-container" data-toggle="tab">Antibiotic Resistance <span class="badge"></span></a></li>
       </ul>
       <div id='snp-container' class='tab-pane active'>
         <table id='snp-table' class='annotation-display-table table'>
@@ -71,9 +75,21 @@
         <div id='genbank-biosystem-annotations'>
         </div>
       </div>
-      <div id="blast-hits-container" class='tab-pane'>
-        <button id='show-blast-summary-btn' class='btn btn-xs tt' title="Show a summary of the entities hit by Blast Search">Summary</button>
-        <table id='blast-hit-annotations' class='annotation-display-table table'>
+<!--       <div id="blast-hits-container" class='tab-pane'>
+        <button id='show-blast-hits-summary-btn' class='btn btn-xs tt' title="Show a summary of the entities hit by Blast Search">Summary</button>
+        <table id='blast-hits-annotations' class='annotation-display-table table'>
+        </table>
+      </div> -->
+      <div id="drugbank-container" class='tab-pane'>
+        <button id='show-drugbank-summary-btn' class='btn btn-xs tt' title="Show a summary of DrugBank results for this entry.">Summary</button>&nbsp;
+        <button id='show-drugbank-overflow-btn' class='btn btn-xs tt btn-info' title="Show all">Show All Hits</button>
+        <table id='drugbank-annotations' class='blast-hit-annotations annotation-display-table table'>
+        </table>
+      </div>
+      <div id="comprehensive_antibiotic_resistance_database-container" class='tab-pane'>
+        <button id='show-comprehensive_antibiotic_resistance_database-summary-btn' class='btn btn-xs tt' title="Show a summary of Antibiotic Resistance results for this entry.">Summary</button>&nbsp;
+        <button id='show-comprehensive_antibiotic_resistance_database-overflow-btn' class='btn btn-xs tt btn-info' title="Show all">Show All Hits</button>
+        <table id='comprehensive_antibiotic_resistance_database-annotations' class='blast-hit-annotations annotation-display-table table'>
         </table>
       </div>
     </div>

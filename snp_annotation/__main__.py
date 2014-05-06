@@ -126,7 +126,11 @@ def run_annotation_report(args, anno_vcf, annotation_manager_driver, coverage_da
 		for external_database in external_database_results:
 			for category in external_database_results[external_database]:
 				annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
-	except Exception, e:
+
+		annotation_report_driver.normalize_all_entries()
+		annotation_report_driver.score_all_entries()
+
+	except TypeError, e:#Exception, e:
 		print(e)
 
 	return annotation_report_driver

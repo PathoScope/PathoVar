@@ -36,7 +36,7 @@ global_args.cache_dir = '.anno_cache/'
 global_args.min_depth = 5
 global_args.alt_depth = 0.4
 
-global_args.snpeff_path = os.environ['SNPEFF_PATH']
+global_args.snpeff_path = os.environ.get('SNPEFF_PATH', '')
 
 opts = {}
 opts['verbose'] = global_args.verbose
