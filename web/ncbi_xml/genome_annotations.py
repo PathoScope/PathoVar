@@ -12,7 +12,7 @@ from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_va
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
-    CACHE_SCHEMA_VERSION = '0.3.10'
+    CACHE_SCHEMA_VERSION = '0.3.11'
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
@@ -22,7 +22,8 @@ class GenBankFeatureFile(object):
         self.accession = None
         self.parser = None
         self.chromosome = None
-        self.org_name = None
+        self.org_name = ""
+        self.sub_name = ""
         self.genetic_code = None
         self.entries = {}
         self.genome_entry = None
@@ -50,7 +51,7 @@ class GenBankFeatureFile(object):
 
                 org_mod_subname = org_mod_name.find(".//OrgMod_subname")
                 org_mod_subname = org_mod_subname.text if org_mod_subname is not None else ""
-                self.org_name += " " + org_mod_subtype + " " + org_mod_subname
+                self.sub_name += " " + org_mod_subtype + " " + org_mod_subname
             
             subsource = self.parser.find(".//BioSource_subtype")
             if subsource is not None:
@@ -63,7 +64,7 @@ class GenBankFeatureFile(object):
                     subtype_name_i = subtype_name[i]
                     #subtype_i = to_attr_value(subtype_i, 'value') if subtype_i is not None else ''
                     subtype_name_i = subtype_name_i.text if subtype_name_i is not None else ''
-                    self.org_name += ' ' + subtype_name_i
+                    self.sub_name += ' ' + subtype_name_i
             db_tags = self.parser.find(".//Org-ref_db")
             if db_tags is not None:
                 db_tags = db_tags.findall(".//Dbtag")
@@ -185,6 +186,7 @@ class GenBankFeatureFile(object):
         self.gid = json_dict['gid']
         self.accession = json_dict['accession']
         self.org_name = json_dict['name']
+        self.sub_name = json_dict['sub_name']
         self.chromosome = json_dict['chromosome']
         self.genetic_code = json_dict.get('genetic_code', None)
         self.entries = {k:GenBankSeqEntry(v, self, **self.opts) for k,v in json_dict['entries'].items()}
@@ -201,6 +203,7 @@ class GenBankFeatureFile(object):
         data_dict['chromosome'] = self.chromosome
         data_dict['schema_version'] = GenBankFeatureFile.CACHE_SCHEMA_VERSION
         data_dict["name"] = self.org_name
+        data_dict['sub_name'] = self.sub_name
         data_dict['genetic_code'] = self.genetic_code
         if self.entries is None: 
             print("Entries is None")
@@ -516,13 +519,13 @@ class IntergenicEntry(object):
     def __init__(self, upstream = None, downstream = None):
         self.upstream_id = upstream
         self.downstream_id = downstream
-
+        self.is_intergenic = True
     @property
     def gid(self):
         return [self.upstream_id, self.downstream_id]
 
-    def is_intergenic(self):
-        return True
+    #def is_intergenic(self):
+    #    return True
 
     def to_info_field(self):
         return "(Intergenic:%s~%s)" % (self.upstream_id, self.downstream_id)

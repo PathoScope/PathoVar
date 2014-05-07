@@ -80,16 +80,15 @@ def main(args):
 	filter_args.ref_vcfs = args.ref_vcfs
 	filter_args.intersection = args.intersection
 
-	from pathovar.snp_annotation import locate_variant, annotation_report 
 	from pathovar.snp_annotation.__main__ import run_annotation_report, find_variant_locations
-	from pathovar.web import annotation_manager
+	from pathovar.web.annotation_manager import EntrezAnnotationManager
 
-	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
+	annotation_manager_driver = EntrezAnnotationManager(**opts)
 
 	anno_vcf, variant_locator_driver = find_variant_locations(variant_file, annotation_manager_driver = annotation_manager_driver,
 		**dict(filter_args = filter_args, **opts))
 
-	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, **opts)
+	annotation_report_driver = run_annotation_report(args, anno_vcf, variant_locator_driver, annotation_manager_driver, **opts)
 
 	anno_json = annotation_report_driver.to_json_file()
 

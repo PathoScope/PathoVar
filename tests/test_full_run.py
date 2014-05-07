@@ -46,6 +46,7 @@ opts['cache_dir'] = global_args.cache_dir
 call_results_files = None
 variant_file = None
 anno_vcf = None
+variant_locator_driver = None
 annotation_manager_driver = None
 annotation_report_driver = None
 ref_fa = None
@@ -91,7 +92,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         timer = time()
         global annotation_manager_driver
         annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**global_args.__dict__)
-        global anno_vcf
+        global anno_vcf, variant_locator_driver
         anno_vcf, variant_locator_driver = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = global_args, **opts))
         self.assertTrue(os.path.exists(anno_vcf), "Calls find_variant_locations() did not produce an annotated VCF File")
         elapsed = time() - timer
@@ -100,7 +101,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
     def test_step_3_external_database_search(self):
         timer = time()
         global annotation_report_driver, result_json
-        annotation_report_driver = run_annotation_report(global_args, anno_vcf, annotation_manager_driver, **opts)
+        annotation_report_driver = run_annotation_report(global_args, anno_vcf, variant_locator_driver, annotation_manager_driver, **opts)
         result_json = annotation_report_driver.to_json_file()
         self.assertTrue(os.path.exists(result_json), "Calls to run_annotation_report() did not produce an a JSON File")
         elapsed = time() - timer

@@ -9,8 +9,10 @@ import vcf
 import pathovar
 from pathovar import utils
 from pathovar.utils.vcf_utils import EXPOSED_FILTERS
-from pathovar.snp_annotation import locate_variant, annotation_report, snpeff_driver
-from pathovar.web import annotation_manager
+from pathovar.snp_annotation import snpeff_driver
+from pathovar.snp_annotation.annotation_report import AnnotationReport
+from pathovar.snp_annotation.locate_variant import VariantLocator
+from pathovar.web.annotation_manager import EntrezAnnotationManager
 
 argparser = argparse.ArgumentParser(prog = "snp_annotation")
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
@@ -46,12 +48,13 @@ def main(args):
 		coverage_data = compute_sam_coverage.from_json(args.coverage)
 	if not os.path.exists(args.vcf_file): raise IOError("Input .vcf File Not Found")
 	timer = time()
-	annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**opts)
+	annotation_manager_driver = EntrezAnnotationManager(**opts)
 
 	# Retrieve the annotated VCF and the VariantLocator instance for future reuse
 	anno_vcf, variant_locator_driver = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
 	
-	annotation_report_driver = run_annotation_report(args, anno_vcf, annotation_manager_driver, coverage_data = coverage_data, **opts)
+	annotation_report_driver = run_annotation_report(args, anno_vcf, variant_locator_driver, 
+		annotation_manager_driver, coverage_data = coverage_data, **opts)
 
 	anno_json = annotation_report_driver.to_json_file()
 
@@ -64,7 +67,7 @@ def main(args):
 		IPython.embed()
 
 def find_variant_locations(vcf_file, annotation_manager_driver, **opts):
-	variant_locator_driver = locate_variant.VariantLocator(vcf_file, annotation_manager = annotation_manager_driver, **opts)
+	variant_locator_driver = VariantLocator(vcf_file, annotation_manager = annotation_manager_driver, **opts)
 	variant_locator_driver.annotate_all_snps()
 	anno_vcf = variant_locator_driver.write_annotated_vcf()
 	return anno_vcf, variant_locator_driver
@@ -80,8 +83,10 @@ def run_snpeff(args, anno_vcf, annotation_report_driver, **opts):
 	except snpeff_driver.snpEffException, e:
 		print(e)
 
-def run_annotation_report(args, anno_vcf, annotation_manager_driver, coverage_data = None, **opts):
-	annotation_report_driver = annotation_report.AnnotationReport(anno_vcf, annotation_manager_driver, **opts)
+def run_annotation_report(args, anno_vcf, variant_locator_driver, annotation_manager_driver, coverage_data = None, **opts):
+	
+	annotation_report_driver = AnnotationReport(vcf_path=anno_vcf,variant_locator=variant_locator_driver, 
+												annotation_manager = annotation_manager_driver, **opts)
 	annotation_report_driver.merge_intergenic_record_chunks()
 	#try:
 	if args.coverage and coverage_data is not None:
@@ -130,7 +135,7 @@ def run_annotation_report(args, anno_vcf, annotation_manager_driver, coverage_da
 		annotation_report_driver.normalize_all_entries()
 		annotation_report_driver.score_all_entries()
 
-	except TypeError, e:#Exception, e:
+	except ImportError, e:#Exception, e:
 		print(e)
 
 	return annotation_report_driver

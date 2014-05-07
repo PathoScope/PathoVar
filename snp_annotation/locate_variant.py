@@ -1,6 +1,8 @@
 import re
 import os
 
+from collections import defaultdict
+
 ## Third Party Library Imports
 import vcf 
 from vcf.parser import _Info
@@ -9,6 +11,7 @@ from vcf.parser import _Info
 from pathovar.web.annotation_manager import EntrezAnnotationManager
 
 from pathovar import utils
+from pathovar.utils import defline_parser
 from pathovar.utils import vcf_utils
 
 def init_quality_filters(filter_args):
@@ -28,6 +31,7 @@ class VariantLocator(object):
         self.annotation_manager = opts.get("annotation_manager", EntrezAnnotationManager(**opts))
 
         self.reader.infos['GENE'] = _Info('GENE', 1, "String", "Gene containing this variant")
+        self.gene_list = defaultdict(list)
 
     ##
     #
@@ -71,6 +75,29 @@ class VariantLocator(object):
             writer.write_record(variant)
         writer.close()
         return output_file
+
+    def get_variant_genes(self):
+        genes = {}
+        variant_by_gene = defaultdict(list)
+        intergenic_variants = defaultdict(list)
+        for var in self.annotated_variants:
+            for anno in var.annotations:
+                if anno.is_intergenic:
+                    idents = defline_parser(var.CHROM)
+                    org_name = idents['org_name'].replace('_', ' ')
+                    gid = idents['gene_id']
+                    intergenic_variants[org_name + ":" + gid].append(var)
+                else:
+                    gene_dict = {
+                        "gi": anno.gid, "title": anno.title,
+                        "acc": anno.accession, "strand": anno.strand,
+                    }
+                    genes[gene_dict['gi']] = gene_dict
+                    variant_by_gene[gene_dict['gi']].append(var)
+        return (genes, variant_by_gene, intergenic_variants)
+
+
+
 
 class ReferenceUnparsedException(Exception):
     pass

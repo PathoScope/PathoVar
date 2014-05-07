@@ -47,11 +47,12 @@ def spans_variant(entry, start, stop):
 
     return False if len(vars_spanned) == 0 else vars_spanned
 
-def score_heuristic(entry, snp_score = 1, missense_score = 2, frame_shift_score = 10, 
-                    blast_hit_score = 2, multi_drug_bonus = 1, uncov_region_score = 1,
-                    **opts):
+def score_heuristic(entry, snp_score = .1, missense_score = 2, frame_shift_score = 10, min_quality = 20, 
+                    blast_hit_score = 2, multi_drug_bonus = 2, uncov_region_score = 2):
     variant_score = 1
     for variant in entry["variants"]:
+        if variant['call_quality'] < min_quality:
+            continue
         if variant["eff"]["type"] in ["UNKNOWN", "SYNONYMOUS_CODING"]:
             variant_score += snp_score
         elif variant["eff"]["type"] in ["NON_SYNONYMOUS_CODING"]:
@@ -65,7 +66,7 @@ def score_heuristic(entry, snp_score = 1, missense_score = 2, frame_shift_score 
     for blast_db, blast_hits in entry['blast_hits'].items():
         for hit in blast_hits:
             blast_score += blast_hit_score
-            if re.findall(r'multidrug', hit['hit_def']):
+            if re.search(r'multidrug', hit['hit_def'], re.IGNORECASE):
                 blast_score += multi_drug_bonus
 
     coverage_score = 1
@@ -96,9 +97,9 @@ def normalize_entry_model(entry):
         entry["amino_acid_sequence"] = ""
     if "blast_hits" not in entry:
         entry["blast_hits"] = {}
-
-
-
+    for variant in entry['variants']:
+        if "eff" not in variant:
+            variant['eff']={"type":"UNKNOWN"}
 
 
 # Perform Annotation post-processing and report building. Portions of this class
@@ -107,8 +108,16 @@ def normalize_entry_model(entry):
 # used to create the annotated VCF. There is no reason not to assume you have access
 # to the data objects. 
 class AnnotationReport(object):
-    def __init__(self, vcf_path, annotation_manager, **opts):
-        self.vcf_path = vcf_path
+    def __init__(self, vcf_path = None, variant_locator = None, annotation_manager = None, **opts):
+        if(annotation_manager is None):
+            raise AnnotationReportException("AnnotationReport instance requires an AnnotationManager instance, did not recieve one.")
+        if(vcf_path is None and variant_locator is None):
+            raise AnnotationReportException("AnnotationReport instance requires an annotated VCF file path and a VariantLocator instance, but recieved neither.")
+        self.variant_locator = variant_locator
+        if(self.variant_locator is not None):
+            self.vcf_path = variant_locator.vcf_file
+        else:
+            self.vcf_path = vcf_path
         self.opts = opts
         self.verbose = opts.get('verbose', False)
         self.annotation_manager = annotation_manager
@@ -116,7 +125,12 @@ class AnnotationReport(object):
         self.annotation_dict = annotation_manager.genome_annotations
         # Parse annotated VCF from previous scan. This stage could be instead performed on the data objects from
         # an instance of VariantLocator
-        self.genes, self.variant_by_gene, self.intergenic_variants = vcf_utils.get_variant_genes(self.vcf_path)
+        if(self.variant_locator is not None):
+            self.genes, self.variant_by_gene, self.intergenic_variants = variant_locator.get_variant_genes()
+        elif(self.vcf_path is not None):
+            self.genes, self.variant_by_gene, self.intergenic_variants = vcf_utils.get_variant_genes(self.vcf_path)
+        else:
+            raise AnnotationReportException("No annotated variant information provided.")
         # Transform the variants per gene dictionary from vcf._Record to dictionaries to serialize as JSON
         self.variant_by_gene = {gene:[variant_to_dict(var) for var in self.variant_by_gene[gene]] for gene in self.variant_by_gene }
         # Copy data from annotation_manager to dictionary format to freely decorate with new annotations and serialize as JSON
@@ -174,7 +188,8 @@ class AnnotationReport(object):
     def get_annotations_from_entrez_mapping(self):
         for org,val in self.annotation_dict.items():
             if val.org_name + ':' + val.gid not in self.data:
-                self.data[val.org_name + ':' + val.gid] = {'name':val.org_name, 
+                self.data[val.org_name + ':' + val.gid] = {
+                    'name':val.org_name, "sub_name": val.sub_name,
                     'accession': val.accession, 'gid': val.gid,
                     'db_tag_data': val.db_tag_data,
                     'chromosome': val.chromosome, 'entries':{}
@@ -199,13 +214,14 @@ class AnnotationReport(object):
                 entry['gene_ref_tag'] = None
             locus_tag = entry['gene_ref_tag']
             if locus_tag is None:
-                if self.verbose: print(str(gene) + " is not in Gene database (No Locus Tag)")
+                #if self.verbose: print(str(gene) + " is not in Gene database (No Locus Tag)")
                 continue
             try:
                 gene_comments = self.annotation_manager.get_gene_comments(locus_tag)
                 self[gene][GENE_DB] = gene_comments.to_json_safe_dict()
             except EntrezEUtilsDriverException, e:
-                if self.verbose: print(str(gene) + " is not in Gene database. (No Record)")
+                pass
+                #if self.verbose: print(str(gene) + " is not in Gene database. (No Record)")
 
     ##
     # Get Entrez BioSystems (like KEGG Pathways) using the Entrez Gene ID of the sequence.
@@ -219,10 +235,10 @@ class AnnotationReport(object):
                     gene_db_id = self[gene][GENE_DB]['gene_db_id']
                     biosystems = self.annotation_manager.get_biosystems(gene_db_id)
                     self[gene][BIOSYS_DB] = [biosystem.to_json_safe_dict() for biosystem in biosystems]
-                # else:
+                #else:
                 #     if self.verbose: print(str(gene) + " was not queried. Missing Gene data.")
             except EntrezEUtilsDriverException, e:
-                if self.verbose: print(str(gene) + " is not in BioSystem database.")
+                if self.verbose: print(str(gene) + " is not in BioSystem database. (No Record)")
 
 
     ##
@@ -258,7 +274,6 @@ class AnnotationReport(object):
             # in the encoded string to get a key to get the full organism name
             org_gid = org_tag.split(":")[-1]
             org_name = self.get_org_by_gid(org_gid)
-            print(org_name)
             cluster_mapping = dict()
             current_cluster = []
             last_pos = intergenics[0].start
@@ -266,8 +281,14 @@ class AnnotationReport(object):
                 if var.start - 500 >= last_pos:
                     cluster = dict()
                     cluster['start'] = current_cluster[0].start - 250
-                    cluster['upstream_id'] = current_cluster[0].INFO['GENE'].split(":")[1].split("~")[0]
-                    cluster['downstream_id'] = current_cluster[-1].INFO['GENE'].split(":")[1].split("~")[0]
+                    # If data source is a dictionary, the data must be parsed from the info line
+                    if(type(current_cluster[0].INFO["GENE"]) == dict):
+                        cluster['upstream_id'] = current_cluster[0].INFO['GENE'].split(":")[1].split("~")[0]
+                        cluster['downstream_id'] = current_cluster[-1].INFO['GENE'].split(":")[1].split("~")[0]
+                    # Else the data source is an object that does not need to be parsed
+                    else:
+                        cluster['upstream_id'] = current_cluster[0].annotations[0].upstream_id
+                        cluster['downstream_id'] = current_cluster[0].annotations[0].upstream_id
                     cluster['end'] = current_cluster[0].start + 750
                     cluster['variants'] = map(variant_to_dict, current_cluster)
                     cluster['nucleotide_sequence'] = self.data[org_name]["chromosome"][(cluster['start']):cluster['end']]
@@ -351,7 +372,6 @@ class AnnotationReport(object):
         for org_name, org_data in self.data.items():
             for gid, entry in org_data['entries'].items():
                 score_heuristic(entry)
-                print(gid, entry["score"])
 
     ##
     # Consume coverage data to get mean coverage for each gene that contains a variant
@@ -441,7 +461,8 @@ class AnnotationReport(object):
             for gene_name, gene_val in org_val.items():
                 pass
 
-
+class AnnotationReportException(Exception):
+    pass
 
 
 
