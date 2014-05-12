@@ -47,20 +47,33 @@ def spans_variant(entry, start, stop):
 
     return False if len(vars_spanned) == 0 else vars_spanned
 
-def score_heuristic(entry, snp_score = .1, missense_score = 2, frame_shift_score = 10, min_quality = 20, 
+def score_heuristic(entry, snp_score = .1, missense_score = 2, frame_shift_score = 2/3.0, min_quality = 20, 
                     blast_hit_score = 2, multi_drug_bonus = 2, uncov_region_score = 2):
     variant_score = 1
+    seq_len = float(entry['end'] - entry['start'])
     for variant in entry["variants"]:
         if variant['call_quality'] < min_quality:
             continue
-        if variant["eff"]["type"] in ["UNKNOWN", "SYNONYMOUS_CODING"]:
+        if variant["eff"]["type"] in ["UNKNOWN", "SYNONYMOUS_CODING", "INTERGENIC"]:
             variant_score += snp_score
-        elif variant["eff"]["type"] in ["NON_SYNONYMOUS_CODING"]:
+
+        elif variant["eff"]["type"] in ["NON_SYNONYMOUS_CODING", "NON_SYNONYMOUS_START", \
+                                        "SYNONYMOUS_STOP", "NON_SYNONYMOUS_STOP"]:
             variant_score += missense_score
-        elif variant["eff"]["type"] in ["FRAME_SHIFT", "NON_SYNONYMOUS_START", "STOP_GAINED", \
-                                        "STOP_LOST", "START_LOST", "SYNONYMOUS_STOP", \
-                                        "RARE_AMINO_ACID"]:
-            variant_score += frame_shift_score
+
+        elif variant["eff"]["type"] in ["STOP_GAINED", "STOP_LOST", "START_LOST", "RARE_AMINO_ACID"]:
+            variant_score += seq_len/3.0 * min(seq_len / 2000, 1)
+
+        elif variant["eff"]["type"] in ["FRAME_SHIFT", "SPLICE_SITE_ACCEPTOR", "SPLICE_SITE_DONOR"]:
+            start_point = variant['start'] - entry['start']
+            percent_shift = (start_point / seq_len)
+            # The earlier the shift occurs, the greater the score multiplier, 
+            # but penalize short sequences ( < 1000 bp) 
+            score = (frame_shift_score / percent_shift) * min(seq_len / 2000, 1)
+            variant_score += score
+            #variant_score += frame_shift_score
+        else:
+            print("Variant Effect Not Recognized: %s" % variant["eff"]["type"])
     
     blast_score = 1
     for blast_db, blast_hits in entry['blast_hits'].items():
@@ -71,10 +84,22 @@ def score_heuristic(entry, snp_score = .1, missense_score = 2, frame_shift_score
 
     coverage_score = 1
     for region in entry["uncovered_regions"]:
+        # if(entry['mean_coverage'] == 0):
+        #     uncov_region_score * --
         coverage_score += uncov_region_score
 
     entry["score"] = variant_score * blast_score * coverage_score
     return entry
+
+def gene_filter(entry, hypothetical = True, intergenic = True, min_quality = 20):
+    if re.search(r"hypothetical", entry['title']) and hypothetical:
+        return False
+    elif entry['is_intergenic'] and intergenic:
+        return False
+    if any([var['call_quality'] < min_quality for var in entry['variants'] if min_quality is not None]):
+        return False
+
+    return True
 
 
 

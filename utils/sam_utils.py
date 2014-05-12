@@ -94,10 +94,12 @@ class SamHeader(object):
         self.fields = {}
         if len(fields) > 2:
             self.rest = fields[2:]
-            # Capture fields without caring waht they are.
+            # Capture fields without caring what they are.
             for field in fields[2:]:
-                fname, fval = field.split(":")
-                self.fields[fname] = fval.replace('\n','')
+                fields_data = field.split(":")
+                fname = fields_data[0]
+                fval = fields_data[1:]
+                self.fields[fname] = "".join(fval).replace('\n','')
                 # Whitelisted Integer Fields
                 if fname in ['LN']:
                     self.fields[fname] = int(self.fields[fname])

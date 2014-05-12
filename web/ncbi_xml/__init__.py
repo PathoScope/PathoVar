@@ -49,15 +49,14 @@ def try_tag(tag, func, default = None):
         return default
 
 def to_text(tag):
+    if tag is None:
+        return None
     return ' '.join([child.text for child in tag.getiterator() if child is not None and child.text])
 
 def to_text_strip(tag):
-    try:
-        return ' '.join([child.text.strip() for child in tag.getiterator() if child is not None and child.text and child.text.strip() != ''])
-    except Exception, e:
-        print(tag)
-        print(tag.getchildren())
-        raise e
+    if tag is None:
+        return None
+    return ' '.join([child.text.strip() for child in tag.getiterator() if child is not None and child.text and child.text.strip() != ''])
 
 def to_int(tag):
     return int(tag.text)
