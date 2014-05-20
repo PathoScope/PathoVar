@@ -38,9 +38,11 @@ class SamtoolsSNPCaller(SNPCallerBase):
         # Input may be in BAM format
         bam_file = [sam_file]
         if not is_bam(sam_file):
+            if self.verbose: print("Input is .sam, filtering")
             cleaned_sam_file = self.drop_missing_references_from_alignment(sam_file, genome_path)
             bam_file = self._sam_to_bam(genome_path, *[cleaned_sam_file])
-
+        else:
+            if self.verbose: print("Input is .bam, not filtering")
         sorted_bam_files = self._sort_bam(*bam_file)
         indexed_bam_files = self._index_bam(*sorted_bam_files)
         vcf_files = self._mpileup_bam_files(genome_path, *sorted_bam_files)

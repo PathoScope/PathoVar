@@ -7,6 +7,7 @@ import argparse
 import pathovar
 from pathovar import utils
 from pathovar.utils.vcf_utils import EXPOSED_FILTERS
+from pathovar.snp_caller import is_bam
 
 argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100), 
     conflict_handler='resolve')
@@ -38,7 +39,7 @@ def call_snps(args, **opts):
     consensus_sequences = variant_file + ".cns.fq"
     # variant_file is a list of vcf files called, but only one should be generated in this case
     result_files = {'variant_file': variant_file, 'consensus': consensus_sequences}
-    if args.coverage:
+    if args.coverage and not is_bam(args.sam_file):
         from pathovar.snp_caller import compute_sam_coverage
         coverage_json = compute_sam_coverage.main(sam_parser = snp_caller_driver.sam_parser)
         result_files['coverage'] = coverage_json

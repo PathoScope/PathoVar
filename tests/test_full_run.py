@@ -23,7 +23,7 @@ global_args.clean = True
 global_args.snp_caller = "samtools"
 global_args.coverage = True
 
-global_args.sam_file = "data/updated_outalign.sam.filt.sam"
+global_args.sam_file = "data/updated_outalign.sam.filt.filt.bam"
 
 global_args.reference_genomes = "data/klebsiella-pneumoniae_ti.fa"
 global_args.org_names = None
@@ -71,7 +71,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         print("\nClearing Files")
         try:
             os.remove(*glob.glob('data/*.vcf*'))
-            os.remove(*glob.glob('data/*.bam*'))
+            os.remove(*glob.glob('data/*.bai*'))
             os.remove(*glob.glob('data/*.xml*'))
         except:
             pass
