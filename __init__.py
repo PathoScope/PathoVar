@@ -110,7 +110,7 @@ def get_config(path, alert=False):
 
 def write_config(path, data):
     try:
-        json.dump(data, open(path, 'w'))
+        json.dump(data, open(path, 'w'), sort_keys = False, indent = 4)
     except OSError, e:
         print(e)
         exit(-1)
@@ -126,6 +126,12 @@ DEFAULT_CONFIG = {
         "samtools:": '',
         "snpeff": '',
         "blast": ''
+    },
+    "heuristic_parameters": {
+        
+    },
+    "filter_parameters" :{
+
     },
     "external_databases":{
         "comprehensive_antibiotic_resistance_database": {
@@ -162,27 +168,21 @@ DEFAULT_CONFIG = {
             "enabled": False
         },
         "drugbank": {
-            "data_urls": {
-                "nucleotide": [
-                    "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_target.fasta.zip",
-                    "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_enzyme.fasta.zip",
-                    "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_transporter.fasta.zip",
-                    "http://www.drugbank.ca/system/downloads/current/sequences/gene/all_carrier.fasta.zip"
-                ],
-                "protein":[
-                    "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_target.fasta.zip",
-                    "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_enzyme.fasta.zip",
-                    "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_transporter.fasta.zip",
-                    "http://www.drugbank.ca/system/downloads/current/sequences/protein/all_carrier.fasta.zip"
-                ]
-            },
-            "storage_path": "databases/drugbank/",
-            "setup_script": "setup_external_data/drugbank_setup.py",
-            "appropriate_organisms": [
-                "*"
-            ],
-            "enabled": False
-        }, 
+        "data_urls": {
+            "protein":[
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_carrier.fasta.gz?attredirects=0&d=1",
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_enzyme.fasta.gz?attredirects=0&d=1",
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_target.fasta.gz?attredirects=0&d=1",
+                "https://sites.google.com/site/mobiuskleinscripthost/data/all_transporter.fasta.gz?attredirects=0&d=1"
+            ]
+        },
+        "storage_path": "databases/drugbank/",
+        "setup_script": "setup_external_data/drugbank_setup.py",
+        "appropriate_organisms": [
+            "*"
+        ],
+        "enabled": False
+        },
         "immune_epitope_database": {
              "data_urls":{
                 "cell_assays": [

@@ -8,6 +8,7 @@ from pathovar.utils import vcf_utils, defline_parser
 from pathovar.utils.fasta_utils import SequenceRecord, MutatedSequenceRecord, MutationException
 from pathovar.web.entrez_eutils import EntrezEUtilsDriverException
 from pathovar.snp_caller import compute_sam_coverage
+from pathovar.snp_annotation.scoring_heuristic import score_heuristic_cap
 
 GENE_DB = 'gene_comments'
 BIOSYS_DB = "biosystems"
@@ -21,7 +22,9 @@ def variant_to_dict(var):
                     else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) 
                         else "deletion")),
             "eff": {
-                "type": "UNKNOWN" if len(str(var.REF)) == len(map(str, var.ALT)[0]) else "FRAME_SHIFT"
+                "type": "UNKNOWN" if len(str(var.REF)) == len(map(str, var.ALT)[0]) else "FRAME_SHIFT",
+                "impact": "UNKNOWN" if len(str(var.REF)) == len(map(str, var.ALT)[0]) else "HIGH",
+
             }
         }
 
@@ -46,50 +49,6 @@ def spans_variant(entry, start, stop):
                     vars_spanned.append(i)
 
     return False if len(vars_spanned) == 0 else vars_spanned
-
-def score_heuristic(entry, snp_score = .1, missense_score = 2, frame_shift_score = 2/3.0, min_quality = 20, 
-                    blast_hit_score = 2, multi_drug_bonus = 2, uncov_region_score = 2):
-    variant_score = 1
-    seq_len = float(entry['end'] - entry['start'])
-    for variant in entry["variants"]:
-        if variant['call_quality'] < min_quality:
-            continue
-        if variant["eff"]["type"] in ["UNKNOWN", "SYNONYMOUS_CODING", "INTERGENIC"]:
-            variant_score += snp_score
-
-        elif variant["eff"]["type"] in ["NON_SYNONYMOUS_CODING", "NON_SYNONYMOUS_START", \
-                                        "SYNONYMOUS_STOP", "NON_SYNONYMOUS_STOP"]:
-            variant_score += missense_score
-
-        elif variant["eff"]["type"] in ["STOP_GAINED", "STOP_LOST", "START_LOST", "RARE_AMINO_ACID"]:
-            variant_score += seq_len/3.0 * min(seq_len / 2000, 1)
-
-        elif variant["eff"]["type"] in ["FRAME_SHIFT", "SPLICE_SITE_ACCEPTOR", "SPLICE_SITE_DONOR"]:
-            start_point = variant['start'] - entry['start']
-            percent_shift = (start_point / seq_len)
-            # The earlier the shift occurs, the greater the score multiplier, 
-            # but penalize short sequences ( < 1000 bp) 
-            score = (frame_shift_score / percent_shift) * min(seq_len / 2000, 1)
-            variant_score += score
-            #variant_score += frame_shift_score
-        else:
-            print("Variant Effect Not Recognized: %s" % variant["eff"]["type"])
-    
-    blast_score = 1
-    for blast_db, blast_hits in entry['blast_hits'].items():
-        for hit in blast_hits:
-            blast_score += blast_hit_score
-            if re.search(r'multidrug', hit['hit_def'], re.IGNORECASE):
-                blast_score += multi_drug_bonus
-
-    coverage_score = 1
-    for region in entry["uncovered_regions"]:
-        # if(entry['mean_coverage'] == 0):
-        #     uncov_region_score * --
-        coverage_score += uncov_region_score
-
-    entry["score"] = variant_score * blast_score * coverage_score
-    return entry
 
 def gene_filter(entry, hypothetical = True, intergenic = True, min_quality = 20):
     if re.search(r"hypothetical", entry['title']) and hypothetical:
@@ -263,7 +222,8 @@ class AnnotationReport(object):
                 #else:
                 #     if self.verbose: print(str(gene) + " was not queried. Missing Gene data.")
             except EntrezEUtilsDriverException, e:
-                if self.verbose: print(str(gene) + " is not in BioSystem database. (No Record)")
+                #if self.verbose: print(str(gene) + " is not in BioSystem database. (No Record)")
+                pass
 
 
     ##
@@ -392,11 +352,11 @@ class AnnotationReport(object):
             for gid, entry in org_data['entries'].items():
                 normalize_entry_model(entry)
 
-    def score_all_entries(self):
+    def score_all_entries(self, blast_max = 20, snp_max = 20, coverage_max = 20, var_score_dict=None, blast_value = 2, coverage_value = 1):
         if self.verbose : print("Running scoring heuristic")
         for org_name, org_data in self.data.items():
             for gid, entry in org_data['entries'].items():
-                score_heuristic(entry)
+                score_heuristic_cap(entry, blast_max, snp_max, coverage_max, var_score_dict, blast_value, coverage_value)
 
     ##
     # Consume coverage data to get mean coverage for each gene that contains a variant

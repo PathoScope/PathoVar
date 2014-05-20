@@ -187,7 +187,7 @@ def buildDatabase(snpPath,geneID,strainName,codonTable):
 def annotate(snpPath,strainName,splitFile):
 	snpFile = snpPath + "/snpEff.jar"
 	outFile = splitFile.split(".vcf")[0] + ".eff.vcf"
-	cmdLine = "java -Xmx2g -jar " + snpFile + " -c " + snpPath + "/snpEff.config " + strainName + " -noStats -no-downstream -no-intron -no-upstream " + splitFile + " > " + outFile
+	cmdLine = "java -Xmx2g -jar " + snpFile + " -c " + snpPath + "/snpEff.config " + strainName + " -lof -noStats -no-downstream -no-intron -no-upstream " + splitFile + " > " + outFile
 	subprocess.check_call(cmdLine,shell=True)
 	return outFile
 
@@ -203,8 +203,17 @@ def parseTag(extractTag):
 	infoReturn = defaultdict(lambda: defaultdict(int))
 	nextKey = 0
 	for change in annotations:
-		infoReturn[nextKey]["type"] = change.split("(")[0]
-		compArr = change.split("|")
+		infoReturn[nextKey]["store"] = change 
+		change_data = change.split("(")
+		infoReturn[nextKey]["type"] = change_data[0]
+		rest = change_data[1:]
+		compArr = "(".join(rest).split("|")
+		impact = compArr[0]
+		if len(impact) > 0:
+			infoReturn[nextKey]["impact"] = impact
+		else: 
+			print(compArr)
+			raise snpEffMissingFieldException("No Impact Field Found")
 		gene = compArr[5]
 		aaChange = compArr[3]
 		if len(gene) > 0:
@@ -229,6 +238,10 @@ class snpEffConfigException(snpEffException):
 
 #Cant run the methods
 class snpEffRunException(snpEffException):
+	pass
+
+#Field missing during tag parse
+class snpEffMissingFieldException(snpEffException):
 	pass
 
 #Cant write to directory

@@ -18,6 +18,7 @@ class SamParser(object):
     def parse_file(self):
         with open(self.file_name, 'r') as handle:
             for line in handle:
+                line = line.replace("\n", '')
                 self.line = line
                 if "@SQ" in line:
                     result = SamHeader.parse(line)
@@ -73,12 +74,12 @@ class SamParser(object):
         with open(outfile, 'w') as handle:
             handle.write(str(self.meta_headers[0]) + "\n")
             for head_line in self.reference_headers.values():
-                handle.write(str(head_line))
+                handle.write(str(head_line) + "\n")
             for head_line in self.meta_headers[1:]:
-                handle.write(str(head_line))
+                handle.write(str(head_line) + "\n")
             for rname in self.reads:
                 for read in self.reads[rname]:
-                    handle.write(str(read))
+                    handle.write(str(read) + "\n")
         return outfile
 
 class SamHeader(object):

@@ -40,7 +40,7 @@ global_args.snpeff_path = os.environ.get('SNPEFF_PATH', '')
 
 opts = {}
 opts['verbose'] = global_args.verbose
-opts['clean'] = global_args.clean
+opts['clean'] = False
 opts['cache_dir'] = global_args.cache_dir
 
 call_results_files = None

@@ -4,7 +4,8 @@ import os
 import sys
 import subprocess
 
-from snp_caller_base import SNPCallerBase, SNPCallerException
+from pathovar.snp_caller import is_bam
+from pathovar.snp_caller.snp_caller_base import SNPCallerBase, SNPCallerException
 
 ## 
 #
@@ -32,12 +33,14 @@ class SamtoolsSNPCaller(SNPCallerBase):
 # @param output_sam_file The path to the target .sam file
 # @param source The path to the reference genome of all of the organisms of interest
     def call_snps(self, sam_file, source,  **kwargs):
-        # General purpose cleaning of input files
         genome_path = self.get_reference_genome(source, **kwargs)
-        cleaned_sam_file = self.drop_missing_references_from_alignment(sam_file, genome_path)
-        # samtools-specific workflow
         indexed_reference_genome = self._index_reference_genome(genome_path)
-        bam_file = self._sam_to_bam(genome_path, *[cleaned_sam_file])
+        # Input may be in BAM format
+        bam_file = [sam_file]
+        if not is_bam(sam_file):
+            cleaned_sam_file = self.drop_missing_references_from_alignment(sam_file, genome_path)
+            bam_file = self._sam_to_bam(genome_path, *[cleaned_sam_file])
+
         sorted_bam_files = self._sort_bam(*bam_file)
         indexed_bam_files = self._index_bam(*sorted_bam_files)
         vcf_files = self._mpileup_bam_files(genome_path, *sorted_bam_files)
