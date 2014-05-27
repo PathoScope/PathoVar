@@ -12,6 +12,7 @@ class FastaParser(object):
         self.outfile_path = opts.get("out", file_path + '.filtered')
         self.sequences = []
         self.parsed = False
+        self.parse_file()
 
     def __iter__(self):
         if not self.parsed: self.parse_file()
@@ -22,6 +23,7 @@ class FastaParser(object):
     # Extracts all sequences from the fasta file. on disk, 
     # converting them into `SequenceRecords` using `process_record`
     def parse_file(self):
+        if self.parsed: return
         defline = ''
         sequence = ''
         for line in open(self.file_path, 'r'):

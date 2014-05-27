@@ -24,4 +24,6 @@ def embed_data(template_file, data_file, output_file = None):
 def build_report(data_file, **opts):
     output_file = os.path.dirname(data_file) + os.sep + \
         os.path.splitext(os.path.basename(data_file))[0] + '_report.html'
+    if output_file[0] == os.sep:
+        output_file = output_file[1:]
     return embed_data(TEMPLATE_PATH, data_file, output_file)

@@ -28,33 +28,38 @@
     <div class="col-md-3">
       <button id="help-btn" class='btn btn-xs tt' title="Help Menu"><b>?</b></button>
       <button id="opts-btn" class='btn btn-xs tt' title="Configuration Menu"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30" width="30" height="30"><path d="M14 0 H18 L19 6 L20.707 6.707 L26 3.293 L28.707 6 L25.293 11.293 L26 13 L32 14 V18 L26 19 L25.293 20.707 L28.707 26 L26 28.707 L20.707 25.293 L19 26 L18 32 L14 32 L13 26 L11.293 25.293 L6 28.707 L3.293 26 L6.707 20.707 L6 19 L0 18 L0 14 L6 13 L6.707 11.293 L3.293 6 L6 3.293 L11.293 6.707 L13 6 L14 0 z M16 10 A6 6 0 0 0 16 22 A6 6 0 0 0 16 10"></path></svg></button>
+      <button id='adv-search-btn' class='btn btn-xs tt' title="Advanced Search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox = "0 0 30 30" width="20" height="20" style='padding:3px;'><path d="M12 0 A12 12 0 0 0 0 12 A12 12 0 0 0 12 24 A12 12 0 0 0 18.5 22.25 L28 32 L32 28 L22.25 18.5 A12 12 0 0 0 24 12 A12 12 0 0 0 12 0 M12 4 A8 8 0 0 1 12 20 A8 8 0 0 1 12 4"></path></svg></button>
     </div>
   </div>
   <div class='row'>
     <div id="suggestions" style='position: relative; top: 40px; left: 300px;z-index: 99999; width: 100%'>
     </div>
-    <div id='entry-list-container' class='col-md-3'>
-      <div><b>Genes with Variants</b> <a id='expander' class="pull-right" style='visibility:hidden;'>-</a></div>
+    <div id='entry-list-container' class='col-md-3' style="">
+      <div class='clearfix'>
+        <b>Genes with Variants</b>
+        <a id='expander' class="pull-right">&#8594;</a>
+      </div>
       <div id="gene-filter-input-group" class="input-group tooltipped" data-toggle="tooltip" spellcheck=false title="Type gene search terms to filter the list of genes displayed." data-placement="right">
-        <span class="input-group-addon glyphicon ">
+<!--         <span class="input-group-addon glyphicon "> -->
           <!--  http://jxnblk.github.io/geomicons-open/ works more reliably than glyphicon -->
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox = "0 0 30 30" width="30" height="30" style='width:1em;height1em;'>
+<!--           <svg xmlns="http://www.w3.org/2000/svg" viewBox = "0 0 30 30" width="30" height="30" style='width:1em;height1em;'>
             <path d="M12 0 A12 12 0 0 0 0 12 A12 12 0 0 0 12 24 A12 12 0 0 0 18.5 22.25 L28 32 L32 28 L22.25 18.5 A12 12 0 0 0 24 12 A12 12 0 0 0 12 0 M12 4 A8 8 0 0 1 12 20 A8 8 0 0 1 12 4"></path>
           </svg>
-      </span>
+ --><!--       </span> -->
         <input id="gene-filter-input" class='form-control' type='text' placeholder='Search Genes'>
       </div>
       <div id='entry-list'>
       </div>
     </div>
-    <div id='core-content' class='col-md-9 tab-content'>
+    <div id='core-content' class='col-md-9 tab-content' style="">
       <p id="active-sequence"></p>
       <ul id='tabber' class="nav nav-tabs">
-        <li class='active main-tab'><a id='snp-tab' href="#snp-container" data-toggle="tab">Variant List <span class="badge"></span></a></li>
-        <li class='main-tab'><a id='sequence-tab' href="#sequence-container" data-toggle="tab">Sequence Summary <span class="badge"></span></a></li>
-        <li class='main-tab'><a id='seq-anno-tab' href="#seq-anno-container" data-toggle='tab'>Annotations <span class="badge"></span></a></li>
+        <li class='active main-tab'><a id='snp-tab' href="#snp-container" data-toggle="tab">Variant List <span class="badge tab-count"></span></a></li>
+        <li class='main-tab'><a id='sequence-tab' href="#sequence-container" data-toggle="tab">Sequence Summary <span class="badge tab-count"></span></a></li>
+        <li class='main-tab'><a id='seq-anno-tab' href="#seq-anno-container" data-toggle='tab'>Annotations <span class="badge tab-count"></span></a></li>
         <!-- <li><a id='blast-hits-tab' href="#blast-hits-container" data-toggle="tab">Blast Hits <span class="badge"></span></a></li> -->
-        <li class='main-tab'><a id='drugbank-tab' href="#drugbank-container" data-toggle="tab">DrugBank <span class="badge"></span></a></li>
+        <li class='main-tab'><a id='drugbank-tab' href="#drugbank-container" data-toggle="tab">DrugBank <span class="badge tab-count"></span></a></li>
         <li class='main-tab'><a id='comprehensive_antibiotic_resistance_database-tab' href="#comprehensive_antibiotic_resistance_database-container" data-toggle="tab">Antibiotic Resistance <span class="badge"></span></a></li>
       </ul>
       <div id='snp-container' class='tab-pane active'>

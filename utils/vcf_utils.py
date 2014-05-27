@@ -83,6 +83,7 @@ def filter_vcf(file_path, filters, keep = True, short_circuit = False, output_fi
             # use PASS only if other filter names appear in the FILTER column
             if record.FILTER is None and not keep: record.FILTER = 'PASS'
             output.write_record(record)
+    return output_file
 
 def filter_vcf_in_memory(variant_reader, filters, keep=True, short_circuit = False):
     # build filter chain

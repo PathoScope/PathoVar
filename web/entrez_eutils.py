@@ -61,7 +61,7 @@ class EntrezEUtilsDriver(object):
 
     def find_genome_by_org_name(self, org_name, form = 'fasta', mode = 'text'):
         # Find the genome id
-        if self.verbose: print("Fetching Genome ID from Entrez")
+        #if self.verbose: print("Fetching Genome ID from Entrez")
         genome_db_response = get_robust(genome_by_org_name.format(**dict(org_name = org_name)))
         genome_db_response.raise_for_status()
         
@@ -70,20 +70,20 @@ class EntrezEUtilsDriver(object):
         genome_db_response_xml = BeautifulSoup(genome_db_response.text)
         genome_id = genome_db_response_xml.find_all('id')
         if(len(genome_id) == 0):
-            if self.verbose: print("No Genome ID found")
+            #if self.verbose: print("No Genome ID found")
             output_message = genome_db_response_xml.find_all('outputmessage')[0]
             if output_message.get_text() == u"No items found.":
                 raise OrganismNotFoundException()
         # If there is ambiguity over which genome id to choose, just take the first
         genome_id = genome_id[0].get_text()
-        if self.verbose: print("Genome ID: %s" % genome_id)
+        #if self.verbose: print("Genome ID: %s" % genome_id)
 
         # Set up remote environment to cross-link from genome id to nuccore id
-        if self.verbose: print("Fetching Link to Genome from Entrez")
+        #if self.verbose: print("Fetching Link to Genome from Entrez")
         genome_to_nuccore_response = get_robust(link_from_genome_to_nuccore.format(**dict(id = genome_id)))
         genome_to_nuccore_response.raise_for_status()
 
-        if self.verbose: print("Response recieved...")
+        #if self.verbose: print("Response recieved...")
         query_key = None
         web_env = None        
         genome_to_nuccore_response_xml = BeautifulSoup(genome_to_nuccore_response.text)
@@ -91,23 +91,23 @@ class EntrezEUtilsDriver(object):
             query_key = genome_to_nuccore_response_xml.find('querykey').get_text()
             web_env = genome_to_nuccore_response_xml.find('webenv').get_text()
         except:
-            if(self.verbose): print(genome_to_nuccore_response_xml)
+            #if(self.verbose): print(genome_to_nuccore_response_xml)
             raise EntrezEUtilsDriverException("Query Key and/or Web Env Missing")
-        if self.verbose: print("Fetching Genome fasta file from Entrez")
+        #if self.verbose: print("Fetching Genome fasta file from Entrez")
         get_nucleotide_sequences_response = get_robust(get_nucleotides_from_link \
             .format(**dict(query_key = query_key, web_env = web_env, form = form, mode = mode)))
         get_nucleotide_sequences_response.raise_for_status()
         # The nucleotide sequence should be located in get_genome_response.text
-        if self.verbose: print("Response recieved...")
+        #if self.verbose: print("Response recieved...")
         return get_nucleotide_sequences_response.text
 
     def find_nucleotides_by_gene_id(self, gene_id, form = 'fasta', mode = 'text'):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
         timer = time()
-        if self.verbose: print("Fetching %s from Entrez" % gene_id)
+        #if self.verbose: print("Fetching %s from Entrez" % gene_id)
         get_nucleotide_sequences_response = get_robust(get_nucleotides_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode=mode)))
-        if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
+        #if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
         get_nucleotide_sequences_response.raise_for_status()
         # The genome sequence should be located in get_genome_response.text
         return get_nucleotide_sequences_response.text
@@ -116,9 +116,9 @@ class EntrezEUtilsDriver(object):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
         timer = time()
-        if self.verbose: print("Fetching %s from Entrez" % gene_id)
+        #if self.verbose: print("Fetching %s from Entrez" % gene_id)
         get_protein_sequences_response = get_robust(get_protein_by_gene_id.format(**dict(gene_id=gene_id, form=form, mode = mode)))
-        if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
+        #if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
         get_protein_sequences_response.raise_for_status()
         return get_protein_sequences_response.text
         
@@ -126,9 +126,9 @@ class EntrezEUtilsDriver(object):
         # Just in case it was passed as an int
         gene_id = str(gene_id)
         timer = time()
-        if self.verbose: print("Fetching %s from Entrez" % gene_id)
+        #if self.verbose: print("Fetching %s from Entrez" % gene_id)
         get_link_from_protein_to_gene_response = get_robust(link_from_protein_to_gene.format(**dict(id=gene_id)))
-        if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
+        #if self.verbose: print("Response recieved (%s sec)" % str(time() - timer))
         get_link_from_protein_to_gene_response.raise_for_status()
         query_key = None
         web_env = None
@@ -146,7 +146,7 @@ class EntrezEUtilsDriver(object):
 
     def find_gene_by_locus_tag(self, locus_tag):
         timer = time()
-        if self.verbose: print ("Fetching %s from Entrez" % locus_tag)
+        #if self.verbose: print ("Fetching %s from Entrez" % locus_tag)
         get_gene_id_from_locus_tag_response_xml = BeautifulSoup(get_robust(get_gene_by_locus_tag.format(**dict(locus_tag=locus_tag))).text)
         try:
             gene_id = get_gene_id_from_locus_tag_response_xml.find('id').get_text()
@@ -175,7 +175,7 @@ class EntrezEUtilsDriver(object):
     def find_biosystem_by_bsid(self, bsid):
         bsid = str(bsid)
         timer = time()
-        if self.verbose: print("Fetching %s from Entrez" % bsid)
+        #if self.verbose: print("Fetching %s from Entrez" % bsid)
         get_biosystem_by_bsid_response = get_robust(get_biosystem_by_bsid.format(**dict(bsid=bsid)))
         get_biosystem_by_bsid_response.raise_for_status()
         return get_biosystem_by_bsid_response.text

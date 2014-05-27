@@ -9,7 +9,7 @@ class SamParser(object):
         self.opts = opts
         if out != None:
             self.opts['out'] = out
-        self.reference_headers = {}
+        self.reference_headers = {"*": NullHeader()}
         self.meta_headers = []
         self.reads = defaultdict(list)
         self.line = None
@@ -22,7 +22,11 @@ class SamParser(object):
                 self.line = line
                 if "@SQ" in line:
                     result = SamHeader.parse(line)
-                    self.reference_headers[result.definition.split(":")[1]] = result
+                    try:
+                        self.reference_headers[result.definition.split(":")[1]] = result
+                    except IndexError, e:
+                        # stub to fix missing key
+                        self.reference_headers[result.definition] = result
                 elif "@" in line[0]:
                     result = SamHeader.parse(line)
                     self.meta_headers.append(result)
@@ -74,6 +78,8 @@ class SamParser(object):
         with open(outfile, 'w') as handle:
             handle.write(str(self.meta_headers[0]) + "\n")
             for head_line in self.reference_headers.values():
+                if ("is_null" in head_line.fields): 
+                    continue
                 handle.write(str(head_line) + "\n")
             for head_line in self.meta_headers[1:]:
                 handle.write(str(head_line) + "\n")
@@ -111,6 +117,15 @@ class SamHeader(object):
         rest = '\t'.join(self.rest)
         rep = "{tag}\t{definition}\t{rest}".format(**{"tag": self.tag, "definition": self.definition, "rest": rest})
         return rep
+
+class NullHeader(SamHeader):
+    def __init__(self):
+        self.tag = "@SQ"
+        self.definition = "*"
+        self.fields = {"LN": float("inf"), "is_null": True}
+        self.rest = [""]
+
+
 
 class SamRead(object):
     @classmethod

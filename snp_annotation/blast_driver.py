@@ -26,8 +26,14 @@ class BlastAnnotationDriver(object):
 		if not self.is_built():
 			self.build_database()
 
+	def clean(self):
+		if self.opts.get("clean", False):
+			if self.process.returncode == 0 and self.outfile:
+				os.remove(self.outfile)
+				self.outfile = None
+
 	def results(self):
-		if self.process.returncode == 0 and outfile:
+		if self.process.returncode == 0 and self.outfile:
 			return BlastResultsXMLParser(self.outfile)
 		else:
 			self.process.communicate()
@@ -84,7 +90,7 @@ class NucleotideDatabaseBlastAnnotatorBase(object):
 	def __init__(self, database_file_paths, db_name_prefix = '', bin_dir = '',**opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
-		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, NUCLEOTIDE, bin_dir), database_file_paths)
+		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, NUCLEOTIDE, bin_dir, **opts), database_file_paths)
 		self.collection_name = db_name_prefix
 		for driver in self.blast_drivers:
 			driver.db_name = db_name_prefix + '_' + driver.db_name
@@ -118,6 +124,11 @@ class NucleotideDatabaseBlastAnnotatorBase(object):
 		for blaster in self.blast_drivers:
 			if self.verbose: print("Blasting against %s" % blaster.db_name)
 			proc = blaster.blast_with_nucleotides(query, **opts)
+
+	def clean(self):
+		for blaster in self.blast_drivers:
+			blaster.clean()
+
 
 class ProteinDatabaseBlastAnnotatorBase(object):
 	def __init__(self, database_file_paths, db_name_prefix = '', bin_dir = '',**opts):
@@ -158,6 +169,10 @@ class ProteinDatabaseBlastAnnotatorBase(object):
 		for blaster in self.blast_drivers:
 			if self.verbose: print("Blasting against %s" % blaster.db_name)
 			proc = blaster.blast_with_proteins(query, **opts)
+
+	def clean(self):
+		for blaster in self.blast_drivers:
+			blaster.clean()
 
 ## Blast Results Parsing
 # Parses the XML output of the BLAST+ program for simple searches like blastn, blastp, or blastx.
@@ -242,8 +257,3 @@ class BlastResultsHSP(object):
 
 class BlastDriverException(Exception):
 	pass
-
-
-
-if __name__ == '__main__':
-	main(sys.argv)

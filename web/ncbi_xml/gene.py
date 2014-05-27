@@ -208,10 +208,10 @@ class GenBankBioSystemFile(object):
     def _parse_xml(self, data):
         self.parser = ET.fromstring(data)
         self.system_names = [to_text_strip(name) for name in self.parser.findall(".//System_names_E")]
-        self.system_id = self.parser.find(".//Sys-id_bsid").text
-        self.system_description = self.parser.find(".//System_description").text
-        self.external_url = self.parser.find(".//System_recordurl").text
-        self.external_accession = self.parser.find(".//System_externalaccn").text
+        self.system_id = to_text_strip(self.parser.find(".//Sys-id_bsid"))
+        self.system_description = to_text_strip(self.parser.find(".//System_description"))
+        self.external_url = to_text_strip(self.parser.find(".//System_recordurl"))
+        self.external_accession = to_text_strip(self.parser.find(".//System_externalaccn"))
         self.system_categories = [to_text_strip(cat) for cat  in self.parser.findall(".//System_category_E")]
 
     def to_json_safe_dict(self):

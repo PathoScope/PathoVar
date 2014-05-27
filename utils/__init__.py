@@ -22,6 +22,8 @@ ref_id     = re.compile(r'ref\|([^\|]+)\|')
 tax_id = re.compile(r'ti\|([^\|]+)\|')
 ##
 org_name = re.compile(r'org[^\|]*\|([^\|]+)\|')
+##
+star_pat = re.compile(r"^\*$")
 
 ##
 #
@@ -42,6 +44,11 @@ def defline_parser(line):
     genbank_id_matches = genbank_id.findall(line)
     if len(genbank_id_matches) > 0:
         result['genbank_id'] = genbank_id_matches[0]
+    # * represents unaligned
+    if line == "*":
+        result['org_name'] = "*"
+        result['gene_id'] = "*"
+        result['tax_id'] = "*"
     if len(result.keys()) == 0:
         raise DeflineUnparsedException("Could Not Parse Defline: %s" % line)
     return result
