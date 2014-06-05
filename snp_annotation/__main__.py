@@ -21,6 +21,7 @@ argparser.add_argument("--test", action = "store_true", required = False)
 argparser.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
 argparser.add_argument("--coverage", action = "store", type=str, default=False, help="The path to the coverage map .json file produced by calling snps with the --coverage setting." \
 																							"If included, coverage results will be included in the output")
+argparser.add_argument("--clean", action = "store_true", required = False, help = "Remove intermediary files after finished")
 vcf_filter_args = argparser.add_argument_group("VCF Filters")
 for filter_type in EXPOSED_FILTERS:
 	filter_type.customize_parser(vcf_filter_args)

@@ -84,7 +84,7 @@ class VariantLocator(object):
             for anno in var.annotations:
                 if anno.is_intergenic:
                     idents = defline_parser(var.CHROM)
-                    org_name = idents['org_name'].replace('_', ' ')
+                    org_name = idents.get('org_name', var.CHROM).replace('_', ' ')
                     gid = idents['gene_id']
                     intergenic_variants[org_name + ":" + gid].append(var)
                 else:

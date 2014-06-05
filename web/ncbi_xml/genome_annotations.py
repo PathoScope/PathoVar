@@ -12,7 +12,7 @@ from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_va
 # XML structure parser and annotation extraction object. Uses BeautifulSoup to parse
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
-    CACHE_SCHEMA_VERSION = '0.3.11'
+    CACHE_SCHEMA_VERSION = '0.3.12'
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
@@ -114,7 +114,6 @@ class GenBankFeatureFile(object):
         genome_level_features = {}
         sequence_level_features = []
         
-        print("Mapping Features Over Genomic Position")
         for feat in self.features:
             if "complete genome" in feat.title:
                 if feat.start not in genome_level_features:
@@ -297,6 +296,8 @@ class GenBankFeature(object):
         if self.gene_ref_tag is not None:
             self.gene_ref_tag = to_text_strip(self.gene_ref_tag)
         self.gene_prot_name = self.parser.find(".//Prot-ref_name_E")
+        if self.gene_prot_name is not None:
+            self.gene_prot_name = to_text_strip(self.gene_prot_name)
 
         self.strand = self.parser.find('.//Na-strand')
         if self.strand is not None:
@@ -328,7 +329,6 @@ class GenBankFeature(object):
         self.__dict__ = merge_dict
         self.components = (hold, self, other)
         
-
 
     def upgrade_to_entry(self):
         upgrade_dict = dict()

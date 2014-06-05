@@ -63,7 +63,7 @@ to a third party SNP Calling program.
         else:
             if os.path.getsize(source) == 0:
                 raise SNPCallerException("Reference Genome File is empty, are you sure this is the right file? %s" % source)
-            self.reference_genomes = filtered_source
+            self.reference_genomes = source
             return source
 
     def drop_missing_references_from_alignment(self, sam_file, reference_genomes, **kwargs):

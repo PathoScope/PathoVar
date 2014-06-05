@@ -122,7 +122,7 @@ def get_variant_genes(vcf_path):
         gene_info = var.INFO.get('GENE', '')
         if re.search(r"Intergenic", gene_info ):
             idents = defline_parser(var.CHROM)
-            org_name = idents['org_name'].replace('_', ' ')
+            org_name = idents.get('org_name', var.CHROM).replace('_', ' ')
             gid = idents['gene_id']
             intergenic_variants[org_name + ":" + gid].append(var)
         else:
