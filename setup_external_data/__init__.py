@@ -2,28 +2,31 @@ import argparse
 import glob
 import os
 import shutil
-import sys
 import requests
-import subprocess
 
-from pathovar import get_external_databases_config, INSTALL_DIR
+from pathovar.utils import config
 
 setup_argparser = argparse.ArgumentParser()
 setup_argparser.add_argument('--remove', action="store_true", default=False, help = "Remove database files")
 setup_argparser.add_argument('--update', action="store_true", default=False, help = "Update database files")
 setup_argparser.add_argument('--config-file', action='store', default=None, help = "Path to the configuration file to use")
+
 def get_args():
     args = setup_argparser.parse_args()
     return args.__dict__
 
 class SetupManager(object):
-    def __init__(self, database_data, database_key, **opts):
-        self.database_data = database_data
-        self.database_key = 'drugbank'
+    def __init__(self, database_key, config_file = None, **opts):
+        config_data = config.get_config(config_file)
+        self.config_data = config_data
+        self.database_data = config_data['external_databases'][database_key]
+        self.database_key = database_key
         self.verbose = opts.get('verbose', False)
-        self.storage_path = self.database_data['storage_path']
+        self.storage_path = config_data["database_storage_directory"] + os.sep + self.database_data['storage_path']
         self.opts = opts
         self.errors = 0
+
+        print("Storage Path: " + self.storage_path)
 
     def _pre_setup_dirs(self, *args, **kwargs):
         pass
@@ -33,17 +36,25 @@ class SetupManager(object):
     def setup_dirs(self, *args, **kwargs):
         if self.verbose: print("Setting up directories")
         try:
-            os.makedirs(os.path.join(INSTALL_DIR, self.storage_path))
+            os.makedirs(self.storage_path)
         except OSError, e:
-            if self.verbose: print("Ignoring: ", e)
+            if e.errno == 17: 
+                pass
+            else:
+                if self.verbose: print("Ignoring: ", e, e.errno)
+                self.errors += 1
         self._pre_setup_dirs(*args, **kwargs)
         for key, value in self.database_data['data_urls'].items():
             if type(value) == list:
                 try:
-                    if self.verbose: print("Setting up %s" % os.path.join(INSTALL_DIR, self.storage_path, key))
-                    os.makedirs(os.path.join(INSTALL_DIR, self.storage_path, key))
+                    if self.verbose: print("Setting up %s" % os.path.join(self.storage_path, key))
+                    os.makedirs(os.path.join(self.storage_path, key))
                 except OSError, e:
-                    if self.verbose: print("Ignoring: ", e)
+                    if e.errno == 17: 
+                        pass
+                    else:
+                        if self.verbose: print("Ignoring: ", e, e.errno)
+                        self.errors += 1
         self._post_setup_dirs(*args, **kwargs)
 
     def _pre_remove_dirs(self, *args, **kwargs):
@@ -54,20 +65,27 @@ class SetupManager(object):
     def remove_dirs(self, *args, **kwargs):
         if self.verbose: print("Setting up directories")
         try:
-            os.makedirs(os.path.join(INSTALL_DIR, self.storage_path))
+            os.makedirs(self.storage_path)
         except OSError, e:
-            if self.verbose: print("Ignoring: ", e)
+            if e.errno == 17: 
+                pass
+            else:
+                if self.verbose: print("Ignoring: ", e, e.errno)
+                self.errors += 1
         self._pre_remove_dirs(*args, **kwargs)
         for key, value in self.database_data['data_urls'].items():
             if type(value) == list:
                 try:
-                    if self.verbose: print("Removing %s" % os.path.join(INSTALL_DIR, self.storage_path, key))
-                    map(os.remove, glob.glob(os.path.join(INSTALL_DIR, self.storage_path, key, '*')))
-                    os.rmdir(os.path.join(INSTALL_DIR, self.storage_path, key))
+                    if self.verbose: print("Removing %s" % os.path.join(self.storage_path, key))
+                    map(os.remove, glob.glob(os.path.join(self.storage_path, key, '*')))
+                    os.rmdir(os.path.join(self.storage_path, key))
                 except OSError, e:
-                    if self.verbose: print("Ignoring: ", e)
+                    if e.errno == 17: 
+                        pass
+                    else:
+                        if self.verbose: print("Ignoring: ", e, e.errno)
+                        self.errors += 1
         self._post_remove_dirs(*args, **kwargs)
-
 
     def _pre_download_file(self, *args, **kwargs):
         pass
@@ -75,10 +93,13 @@ class SetupManager(object):
     def _post_download_file(self, *args, **kwargs):
         pass
 
+    def _post_setup_actions(self, *args, **kwargs):
+        pass
+
     def download_files(self, *args, **kwargs):
         for key, value in self.database_data['data_urls'].items():
             if type(value) == list:
-                destination = os.path.join(INSTALL_DIR, self.storage_path, key)
+                destination = os.path.join(self.storage_path, key)
                 for url in value:
                     self._pre_download_file(url, *args, **kwargs)
                     result = self.get_file_by_url(url, destination)
@@ -118,12 +139,14 @@ class SetupManager(object):
             self.remove_dirs(*args, **kwargs)
             self.setup_dirs(*args, **kwargs)
             self.download_files(*args, **kwargs)
+            self._post_setup_actions(*args, **kwargs)
         else:
             self.setup_dirs(*args, **kwargs)
             self.download_files(*args, **kwargs)
+            self._post_setup_actions(*args, **kwargs)
         if self.errors > 0:
             print("Errors have occurred")
             exit(1)
 
     def remove(self, *args, **kwargs):
-         shutil.rmtree(os.path.join(INSTALL_DIR, self.storage_path))
+         shutil.rmtree(os.path.join( self.storage_path))

@@ -15,7 +15,13 @@ from pathovar.utils import defline_parser
 from pathovar.utils import vcf_utils
 
 def init_quality_filters(filter_args):
-    filters = [filt(filter_args) for filt in vcf_utils.EXPOSED_FILTERS]
+    filters = []
+    for filt in vcf_utils.EXPOSED_FILTERS:
+        try:
+            filters.append(filt(filter_args))
+        except vcf_utils.VCFFilterException:
+            pass
+
     return filters
 
 class VariantLocator(object):

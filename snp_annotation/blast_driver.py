@@ -18,6 +18,8 @@ class BlastAnnotationDriver(object):
 		self.database_path = database_path
 		self.database_type = database_type
 		self.bin_dir = bin_dir
+		if self.bin_dir != "":
+			self.bin_dir += os.sep
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
 		self.process = None
@@ -29,6 +31,7 @@ class BlastAnnotationDriver(object):
 	def clean(self):
 		if self.opts.get("clean", False):
 			if self.process.returncode == 0 and self.outfile:
+				print("Removing %s" % self.outfile)
 				os.remove(self.outfile)
 				self.outfile = None
 
@@ -55,13 +58,13 @@ class BlastAnnotationDriver(object):
 		args = {'in': self.database_path, 'dbtype': self.database_type}
 		proc = subprocess.call(self.bin_dir + "makeblastdb" + 
 			' -in {in} -dbtype {dbtype}'.format(**args), shell = True)
-		if not self.is_built():
-			raise IOError("Blast Database: makeblastdb Failure (%s)" % self.database_path)
+		if not self.is_built() or proc != 0:
+			raise IOError("Blast Database: makeblastdb Failure (%s). Is NCBI-Blast+ on your path or in your configuration file?" % self.database_path)
 
 	def _run_blast(self, query_file, cmd, **opts):
 		if not self.is_built():
 			raise BlastDriverException("Database Not Built. Cannot run %s on %s" % (cmd, self.database_path))
-		args = dict(evalue = "0.00001", num_threads = 2, outfmt = 5, 
+		args = dict(evalue = "0." + ("0" * 50) + "1", num_threads = 2, outfmt = 5, 
 			outfile = query_file + "_on_" + self.db_name + "." + cmd + '.xml')
 		for opt in opts:
 			args[opt] = opts[opt]
@@ -90,6 +93,8 @@ class NucleotideDatabaseBlastAnnotatorBase(object):
 	def __init__(self, database_file_paths, db_name_prefix = '', bin_dir = '',**opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
+		if(len(database_file_paths) == 0):
+			raise BlastDriverException("No database files were found!")
 		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, NUCLEOTIDE, bin_dir, **opts), database_file_paths)
 		self.collection_name = db_name_prefix
 		for driver in self.blast_drivers:
@@ -134,7 +139,9 @@ class ProteinDatabaseBlastAnnotatorBase(object):
 	def __init__(self, database_file_paths, db_name_prefix = '', bin_dir = '',**opts):
 		self.opts = opts
 		self.verbose = opts.get('verbose', False)
-		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, PROTEIN, bin_dir), database_file_paths)
+		if(len(database_file_paths) == 0):
+			raise BlastDriverException("No database files were found!")
+		self.blast_drivers = map(lambda dbf: BlastAnnotationDriver(dbf, PROTEIN, bin_dir, **opts), database_file_paths)
 		self.collection_name = db_name_prefix
 		for driver in self.blast_drivers:
 			driver.db_name = db_name_prefix + '_' + driver.db_name
@@ -185,6 +192,15 @@ class BlastResultsXMLParser(object):
 		self.queries = [BlastResultsQuery(iteration) for iteration in self.parser.findall('.//Iteration')]
 		self.queries = {defline_parser(query.query_def)['gene_id']: query for query in self.queries if len(query.hits) > 0}
 
+	def __iter__(self):
+		for q, r in self.queries.iteritems():
+			yield (q, r)
+
+	def __len__(self):
+		return len(self.queries)
+
+	def to_json_safe_dict(self):
+		return {k:v.to_json_safe_dict() for k, v in self.queries.items()}
 
 class BlastResultsQuery(object):
 	def __init__(self, parser):

@@ -15,12 +15,23 @@ from pathovar.web import annotation_manager
 from pathovar import utils
 from pathovar.utils import vcf_utils
 
+from pathovar.utils.vcf_utils import FilterByAltCallDepth
+from pathovar.utils.vcf_utils import FilterByReadDepth
+from pathovar.utils.vcf_utils import FilterByMappingQuality
+from pathovar.utils.vcf_utils import FilterByCallQuality
+from pathovar.utils.vcf_utils import FilterByComparisonVCF
+
+from pathovar.utils import config
+from pathovar.utils.config import load_param
 
 global_args = argparser.parse_args('-r . .'.split())
 global_args.verbose = True
 global_args.clean = True
 
+conf = config.get_config(None)
+
 global_args.snp_caller = "samtools"
+global_args.snp_caller_path = config.load_param("", conf["tool_paths"][global_args.snp_caller], "")
 global_args.coverage = True
 
 global_args.sam_file = "data/updated_outalign.sam.filt.filt.bam"
@@ -33,10 +44,20 @@ global_args.keep_all_sequences = False
 
 global_args.cache_dir = '.anno_cache/'
 
-global_args.min_depth = 5
-global_args.alt_depth = 0.4
+filter_args = utils.Namespace()
+filter_args.alt_depth =    load_param(global_args.alt_depth, conf['filter_parameters']['alt_depth'], FilterByAltCallDepth.default_alt_depth)
+filter_args.min_depth =    load_param(global_args.min_depth, conf['filter_parameters']['min_depth'], FilterByReadDepth.default_min_depth)
+filter_args.min_mq    =    load_param(global_args.min_mq, conf['filter_parameters']['min_mq'],       FilterByMappingQuality.default_min_mq)
+filter_args.min_qual  =    load_param(global_args.min_qual, conf['filter_parameters']['min_qual'],   FilterByCallQuality.default_min_qual)
+filter_args.ref_vcfs  =    load_param(global_args.ref_vcfs, conf['filter_parameters']['ref_vcfs'],   FilterByComparisonVCF.default_ref_vcfs)
+filter_args.intersection = load_param(global_args.intersection, conf['filter_parameters']['intersection'], FilterByComparisonVCF.default_intersection)
 
-global_args.snpeff_path = os.environ.get('SNPEFF_PATH', '')
+#print(filter_args)
+
+global_args.snpeff_path = config.load_param(None, conf["tool_paths"]["snpeff"], os.environ["SNPEFF_PATH"])
+global_args.blast_path = config.load_param(None, conf["tool_paths"]["blast"], "")
+
+print(global_args)
 
 opts = {}
 opts['verbose'] = global_args.verbose
@@ -70,7 +91,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
     def test_step_0_clean_up_files(self):
         print("\nClearing Files")
         try:
-            os.remove(*glob.glob('data/*.vcf*'))
+            #os.remove(*glob.glob('data/*.vcf*'))
             os.remove(*glob.glob('data/*.bai*'))
             os.remove(*glob.glob('data/*.xml*'))
         except:
@@ -93,7 +114,7 @@ class TestFullSamtoolsCallerEntrezAnnotation(unittest.TestCase):
         global annotation_manager_driver
         annotation_manager_driver = annotation_manager.EntrezAnnotationManager(**global_args.__dict__)
         global anno_vcf, variant_locator_driver
-        anno_vcf, variant_locator_driver = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = global_args, **opts))
+        anno_vcf, variant_locator_driver = find_variant_locations(variant_file, annotation_manager_driver, **dict(filter_args = filter_args, **opts))
         self.assertTrue(os.path.exists(anno_vcf), "Calls find_variant_locations() did not produce an annotated VCF File")
         elapsed = time() - timer
         print("%s ms elapsed" % str(elapsed))

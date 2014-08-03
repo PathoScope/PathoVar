@@ -8,57 +8,60 @@ import argparse
 
 import pathovar
 from pathovar import utils
+from pathovar.utils import vcf_utils
+from pathovar.utils.config import DEFAULT_CONFIG_PATH, get_config, load_param
+
 from pathovar.utils.vcf_utils import EXPOSED_FILTERS
+from pathovar.utils.vcf_utils import FilterByAltCallDepth
+from pathovar.utils.vcf_utils import FilterByReadDepth
+from pathovar.utils.vcf_utils import FilterByMappingQuality
+from pathovar.utils.vcf_utils import FilterByCallQuality
+from pathovar.utils.vcf_utils import FilterByComparisonVCF
 
 argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100), 
 	conflict_handler='resolve')
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
 argparser.add_argument("sam_file", help = "The alignment file to call variants from [Required]")
 argparser.add_argument('--clean', action = "store_true", help="Clean up intermediary files after they're finished being used [default:False]")
+argparser.add_argument("-c", "--config", action = "store", default = None, help = "Path to the pathovar.conf.json configuration file to use [default:System Wide]")
 argparser.add_argument("--test", action = "store_true", required = False, help="Enter IPython Interactive Session after execution completes [Development Only]")
 
 target_args = argparser.add_argument_group("Target Organism Selection")
 target_args.add_argument('-r',"--reference-genomes", metavar = "REF", action = "store", required=True, help = "path to a fasta file containing all reference genomes to call against. [Required]")
 target_args.add_argument("--org-names", metavar = "ORG-REGEX", action="store", help = "A valid regular expression that matches organism names associated with reference genomes.[optional]")
-target_args.add_argument("--tax-ids", metavar = "TI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Taxonomy ID numbers for each genome to call against.[optional]")
-target_args.add_argument("--gene-ids", metavar = "GI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Gene ID numbers for each genome to call against.[optional]")
+target_args.add_argument("--tax-ids",   metavar = "TI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Taxonomy ID numbers for each genome to call against.[optional]")
+target_args.add_argument("--gene-ids",  metavar = "GI-REGEX,", action = "store", help = "A valid regular expression that matches NCBI Gene ID numbers for each genome to call against.[optional]")
 target_args.add_argument("--keep-all-sequences", action="store_true", default=False, help = "Do NOT discard any sequence in the database that is NOT a complete genome or complete plasmid sequence [optional]")
 
 snp_caller_args = argparser.add_argument_group("SNP Caller Options")
 snp_caller_args.add_argument('-s','--snp-caller', action="store", default = "samtools", choices = ["samtools"], help="Select the SNP Calling Program.[default:samtools]")
-snp_caller_args.add_argument('--snp-caller-path', action="store", default = "", help = "Location of SNP Caller program binaries. Default will search for them on the system path")
-snp_caller_args.add_argument('-c','--coverage', action="store_true", default=False, required=False, help = "Compute per-base coverage of alignment")
+snp_caller_args.add_argument('--snp-caller-path', action="store", default = None, help = "Location of SNP Caller program binaries. [default to config setting]")
+snp_caller_args.add_argument('--coverage', action="store_true", default=False, required=False, help = "Compute per-base coverage of alignment")
 
 snp_anno_args = argparser.add_argument_group("Variant Annotation Options")
-snp_anno_args.add_argument("--cache-dir", action = "store", type=str, default='.anno_cache', help="The location to store raw and processed annotation source data. [default='.anno_cache/']")
-snp_anno_args.add_argument('--snpeff-path', default = '', action = 'store', required = False, help = "Path to the snpEff.jar and .config files [default: search system path]")
-snp_anno_args.add_argument('--blast-path', default = '', action = 'store', required = False, help = 'Path to the NCBI BLAST+ executables. [default: search system path]')
+snp_anno_args.add_argument("--cache-dir", default = None, action = "store", type=str, help="The location to store raw and processed annotation source data. [default to config setting]")
+snp_anno_args.add_argument('--snpeff-path', default = None, action = 'store', required = False, help = "Path to the snpEff.jar and .config files [default: default to config setting]")
+snp_anno_args.add_argument('--blast-path', default = None, action = 'store', required = False, help = 'Path to the NCBI BLAST+ executables. [default: search system path]')
 
+# snp_anno_args.add_argument('--blast-max', default = None, action = 'store', required = False, help = "Maximum score the number of Blast hits contribute to heuristic [default:20]")
+# snp_anno_args.add_argument('--snp-max', default = None, action = 'store', required = False, help = "Maximum score the number of variants contribute to heuristic [default:20]")
 snp_filt_args = argparser.add_argument_group("Variant Filtering Options")
 for filter_type in EXPOSED_FILTERS:
 	filter_type.customize_parser(snp_filt_args)
 
-# def call_snps(args, **opts):
-# 	snp_caller_driver = None
-# 	if args.snp_caller == "samtools":
-# 		from pathovar.snp_caller import samtools_snp_caller
-# 		snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_path, **opts)
-# 	variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, 
-# 		org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
-# 		keep_all = args.keep_all_sequences)
-# 	consensus_sequences = variant_file + ".cns.fq"
-# 	result_files = {'variant_file': variant_file, 'consensus': consensus_sequences}
-# 	if args.coverage:
-# 		from pathovar.snp_caller import compute_sam_coverage
-# 		coverage_json = compute_sam_coverage.main(sam_parser = snp_caller_driver.sam_parser)
-# 		result_files['coverage'] = coverage_json
-# 	return result_files
-
 def main(args):
+
+	configuration = get_config(args.config, alert = True)
+
 	opts = {}
-	opts['verbose'] = args.verbose
-	opts['clean'] = args.clean
-	opts['cache_dir'] = args.cache_dir
+	opts['verbose'] = load_param(args.verbose, configuration['verbose'], False)
+	opts['clean'] = load_param(args.clean, configuration["clean"], False)
+	opts['cache_dir'] = load_param(args.cache_dir, configuration["cache_directory"], '.anno_cache')
+
+	args.snp_caller_path = load_param(args.snp_caller_path, configuration["tool_paths"][args.snp_caller], "")
+
+	args.snpeff_path = load_param(args.snpeff_path, configuration['tool_paths']['snpeff'], "")
+	args.blast_path  = load_param(args.blast_path, configuration['tool_paths']['blast'], "")
 
 	if not os.path.exists(args.sam_file): raise IOError("Input .sam File Not Found")
 	start_clock = time()
@@ -73,12 +76,12 @@ def main(args):
 	anno_vcf = None
 
 	filter_args = utils.Namespace()
-	filter_args.alt_depth = args.alt_depth
-	filter_args.min_depth = args.min_depth
-	filter_args.min_mq = args.min_mq
-	filter_args.min_qual = args.min_qual
-	filter_args.ref_vcfs = args.ref_vcfs
-	filter_args.intersection = args.intersection
+	filter_args.alt_depth =    load_param(args.alt_depth, configuration['filter_parameters']['alt_depth'], FilterByAltCallDepth.default_alt_depth)
+	filter_args.min_depth =    load_param(args.min_depth, configuration['filter_parameters']['min_depth'], FilterByReadDepth.default_min_depth)
+	filter_args.min_mq    =    load_param(args.min_mq, configuration['filter_parameters']['min_mq'],       FilterByMappingQuality.default_min_mq)
+	filter_args.min_qual  =    load_param(args.min_qual, configuration['filter_parameters']['min_qual'],   FilterByCallQuality.default_min_qual)
+	filter_args.ref_vcfs  =    load_param(args.ref_vcfs, configuration['filter_parameters']['ref_vcfs'],   FilterByComparisonVCF.default_ref_vcfs)
+	filter_args.intersection = load_param(args.intersection, configuration['filter_parameters']['intersection'], FilterByComparisonVCF.default_intersection)
 
 	from pathovar.snp_annotation.__main__ import run_annotation_report, find_variant_locations
 	from pathovar.web.annotation_manager import EntrezAnnotationManager

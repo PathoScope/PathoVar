@@ -88,11 +88,16 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 			finalSet[geneID] = annoFile
 		except Exception,e:
 			print e
+			exc_type, exc_obj, exc_tb = sys.exc_info()
+			fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+			print(exc_type, fname, exc_tb.tb_lineno)
 			annoErrorSet.add(geneID)
 	# print(buildErrorSet)
 	# print(annoErrorSet)
 	resultsDict = defaultdict(lambda : defaultdict(int))
 	for geneID in finalSet.keys():
+		effArr = None
+		line_d = None
 		try:
 			with open(finalSet[geneID],"r") as curFile:
 				for line in curFile:
@@ -108,8 +113,10 @@ def main(snpPath, vcfFile, tempDir = None, gidMap = None, **opts):
 							if gID is not None:
 								resultsDict[geneID][loc]['gID'] = gID.group(1)
 		except Exception, e:
-			print e
-
+			print e, effArr
+			exc_type, exc_obj, exc_tb = sys.exc_info()
+			fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+			print(exc_type, fname, exc_tb.tb_lineno)
 	cleanDir(tempDir)
 	return resultsDict
 
@@ -187,8 +194,9 @@ def buildDatabase(snpPath,geneID,strainName,codonTable):
 def annotate(snpPath,strainName,splitFile):
 	snpFile = snpPath + "/snpEff.jar"
 	outFile = splitFile.split(".vcf")[0] + ".eff.vcf"
-	cmdLine = "java -Xmx2g -jar " + snpFile + " -c " + snpPath + "/snpEff.config " + strainName + " -lof -noStats -no-downstream -no-intron -no-upstream " + splitFile + " > " + outFile
-	subprocess.check_call(cmdLine,shell=True)
+	# -lof to add LOF statistics. Removed because they were breaking parseTag
+	cmdLine = "java -Xmx2g -jar " + snpFile + " -c " + snpPath + "/snpEff.config " + strainName + " -noStats -no-downstream -no-intron -no-upstream " + splitFile + " > " + outFile
+	subprocess.check_call(cmdLine, stdout = tempfile.TemporaryFile(), stderr = tempfile.TemporaryFile(), shell=True)
 	return outFile
 
 #Call to parse a snpEff tag into components
@@ -203,26 +211,37 @@ def parseTag(extractTag):
 	infoReturn = defaultdict(lambda: defaultdict(int))
 	nextKey = 0
 	for change in annotations:
-		infoReturn[nextKey]["store"] = change 
-		change_data = change.split("(")
-		infoReturn[nextKey]["type"] = change_data[0]
-		rest = change_data[1:]
-		compArr = "(".join(rest).split("|")
-		impact = compArr[0]
-		if len(impact) > 0:
-			infoReturn[nextKey]["impact"] = impact
-		else: 
-			print(compArr)
-			raise snpEffMissingFieldException("No Impact Field Found")
-		gene = compArr[5]
-		aaChange = compArr[3]
-		if len(gene) > 0:
-			infoReturn[nextKey]["gene"] = gene
-		if len(compArr) > 11:
-			infoReturn[nextKey]["error"] = compArr[11].split(")")[0]
-		if len(aaChange) > 0:
-			infoReturn[nextKey]["aaChange"] = re.split(r'[0-9]+', aaChange)
-		nextKey = nextKey + 1
+		try:
+			infoReturn[nextKey]["store"] = change 
+			change_data = change.split("(")
+			infoReturn[nextKey]["type"] = change_data[0]
+			rest = change_data[1:]
+			compArr = "(".join(rest).split("|")
+			impact = compArr[0]
+			if len(impact) > 0:
+				infoReturn[nextKey]["impact"] = impact
+				if impact not in ["LOW", "MODERATE", "HIGH", "MODIFIER"]:
+					raise snpEffMalformedEffTagException("Impact not in standard classes: %s" % impact)
+			else: 
+				print(compArr)
+				raise snpEffMissingFieldException("No Impact Field Found")
+			gene = compArr[5]
+			aaChange = compArr[3]
+			if len(gene) > 0:
+				infoReturn[nextKey]["gene"] = gene
+			if len(compArr) > 11:
+				infoReturn[nextKey]["error"] = compArr[11].split(")")[0]
+			if len(aaChange) > 0:
+				infoReturn[nextKey]["aaChange"] = re.split(r'[0-9]+', aaChange)
+			nextKey = nextKey + 1
+		except Exception, e:
+			print(e)
+			print({i:j for i, j in enumerate(compArr)})
+			print(infoReturn)
+			exc_type, exc_obj, exc_tb = sys.exc_info()
+			fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+			print(exc_type, fname, exc_tb.tb_lineno)
+			raise
 	return infoReturn
 
 def cleanDir(dir):
@@ -242,6 +261,9 @@ class snpEffRunException(snpEffException):
 
 #Field missing during tag parse
 class snpEffMissingFieldException(snpEffException):
+	pass
+
+class snpEffMalformedEffTagException(snpEffException):
 	pass
 
 #Cant write to directory

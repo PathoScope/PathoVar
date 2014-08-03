@@ -42,15 +42,27 @@ def test_heuristic(annotation_report, file_name, blast_max = 20, snp_max = 20, c
 # Composite score gets extra multiplier?
 # Add weight by allele frequency?
 def score_heuristic_cap(entry, blast_max = 20, snp_max = 20, coverage_max = 20,
-                        var_score_dict=None, blast_value = 2, coverage_value = 1):
+                        var_score_dict=None, blast_value = 2, coverage_value = 1, 
+                        ignore_filter_set = None):
+    if ignore_filter_set is None:
+        ignore_filter_set = set()
+    else:
+        ignore_filter_set = set(ignore_filter_set)
     if var_score_dict is None:
         var_score_dict = {"LOW": 0.1, "UNKNOWN": 1,"MODERATE": 1, "MODIFIER": 1, "HIGH": 2}
+
     variant_score = 0
     for variant in entry["variants"]:
-        variant_score += var_score_dict[variant["eff"].get("impact", "UNKNOWN")]
+        if len(set(variant["filters"]) - ignore_filter_set) == 0:
+            variant_score += var_score_dict[variant["eff"].get("impact", "UNKNOWN")]
 
     entry['snp_burden'] = variant_score
     composite = max(min(variant_score, snp_max), 1)
+
+    # If no variants were accepted, then this gene shouldn't be considered based on its
+    # overall composite score. Other scores are calculated, but the composite will be 0
+    if variant_score == 0:
+        composite = 0
 
     blast_db_scores = defaultdict(int)
     current_db = "UNKNOWN"

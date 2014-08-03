@@ -12,7 +12,10 @@ class FastaParser(object):
         self.outfile_path = opts.get("out", file_path + '.filtered')
         self.sequences = []
         self.parsed = False
-        self.parse_file()
+        try:
+            self.parse_file()
+        except:
+            pass
 
     def __iter__(self):
         if not self.parsed: self.parse_file()
@@ -140,7 +143,7 @@ class FastQParser(FastaParser):
         return outfile.name
 
 class SequenceRecord(object):
-    def __init__(self, defline, sequence, defline_parser_func, **attributes):
+    def __init__(self, defline, sequence, defline_parser_func = defline_parser, **attributes):
         self.defline = re.sub(r'\n|\r', '', defline)
         defline_fields = defline_parser_func(defline)
         self.org_name = defline_fields.get('org_name','-')

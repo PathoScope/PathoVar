@@ -1,19 +1,7 @@
-import json
 import os
 import glob
 
-import pathovar
-from pathovar.snp_annotation import database_annotator_base, blast_driver
-from pathovar.utils.fasta_utils import FastaParser
-
-# Get configuration
-database_data = pathovar.get_external_databases_config()['comprehensive_antibiotic_resistance_database']
-
-# Get location of data files
-nucleotide_sequence_db_paths = glob.glob(os.path.join(pathovar.INSTALL_DIR, database_data['storage_path'] + 'nucleotide/*.fa'))
-protein_sequence_db_paths = glob.glob(os.path.join(pathovar.INSTALL_DIR, database_data['storage_path'] + 'protein/*.fa'))
-
-
+from pathovar.snp_annotation import blast_driver
 
 class CARDNucleotideBlastAnnotator(blast_driver.NucleotideDatabaseBlastAnnotatorBase):
 	def __init__(self, storage_path, bin_dir = '',**opts):
@@ -25,9 +13,5 @@ class CARDProteinBlastAnnotator(blast_driver.ProteinDatabaseBlastAnnotatorBase):
 		protein_sequence_db_paths =  glob.glob(os.path.join(storage_path, "protein", "*.fa"))
 		blast_driver.ProteinDatabaseBlastAnnotatorBase.__init__(self, protein_sequence_db_paths, "comprehensive_antibiotic_resistance_database", bin_dir,**opts)
 
-def defline_parser(defline):
-	pass
 
-if __name__ == '__main__':
-	CARDNucleotideBlastAnnotator()
-	CARDProteinBlastAnnotator()
+

@@ -44,11 +44,21 @@ class AnnotatedVariant(vcf.model._Record):
         rep = "Record(CHROM=%(CHROM)s, POS=%(POS)s, REF=%(REF)s, ALT=%(ALT)s), ANNO=%(annotations)s" % self.__dict__
         return rep
 
+def purify_vcf(file_path, output_file = None):
+    if output_file is None:
+        output_file = file_path + '.pure.vcf'
+    inp = vcf.Reader(open(file_path))
+    out = vcf.Writer(open(output_file, 'w'), inp)
+    for var in inp:
+        if len(var.FILTER) == 0:
+            out.write_record(var)
+    return output_file
+
 ## filter_vcf
 # Based on vcf_filter.py from PyVCF. Compatible with instantiated
 # PyVCF _Filter objects.
 # @param keep If True, keep sequences that pass a filter, else exclude sequences that pass the filter
-def filter_vcf(file_path, filters, keep = True, short_circuit = False, output_file = None):
+def filter_vcf(file_path, filters, short_circuit = False, drop_filtered = False, invert = False, output_file = None):
     if output_file is None:
         output_file = file_path + '.filt.vcf'
     inp = vcf.Reader(open(file_path, 'r'))
@@ -67,51 +77,57 @@ def filter_vcf(file_path, filters, keep = True, short_circuit = False, output_fi
 
     # apply filters
     for record in inp:
-        output_record = []
+        output_record = True
         for filt in chain:
             result = filt(record)
-            if result is None:
-                continue
-            
-            output_record.append(bool(result))
+            if (result is None) or (result is not None and invert): continue
+
+            # save some work by skipping the rest of the code
+            if drop_filtered:
+                output_record = False
+                break
+
             record.add_filter(filt.filter_name())
-        output_record = all(output_record) and len(output_record) > 0
-        #print(record, output_record)
-        if not keep:
-            output_record = not output_record
+            if short_circuit: break
+        
+        # If the record is to be kept (not dropping filtered, or record passed all filters)
         if output_record:
-            # use PASS only if other filter names appear in the FILTER column
-            if record.FILTER is None and not keep: record.FILTER = 'PASS'
             output.write_record(record)
     return output_file
 
-def filter_vcf_in_memory(variant_reader, filters, keep=True, short_circuit = False):
-    # build filter chain
+# Only want filters to return a non-None value when the record fails to pass their filtering constraints
+def filter_vcf_in_memory(variants, filters, short_circuit = False, drop_filtered = False, invert = False, **kwargs):
+
     chain = []
     for filter_obj in filters:
         chain.append(filter_obj)
         short_doc = filter_obj.__doc__ or ''
         short_doc = short_doc.split('\n')[0].lstrip()
         # add a filter record to the output
-        variant_reader.filters[filter_obj.filter_name()] = _Filter(filter_obj.filter_name(), short_doc)
-
-    keepers = []
-    # apply filters
-    for record in variant_reader:
-        output_record = []
+        try:
+            variants.filters[filter_obj.filter_name()] = _Filter(filter_obj.filter_name(), short_doc)
+        except:
+            pass
+    filtered_records = []
+    for record in variants:
+        output_record = True
         for filt in chain:
             result = filt(record)
-            
-            output_record.append(bool(result))
+            if (result is None) or (result is not None and invert): continue
+
+            # save some work by skipping the rest of the code
+            if drop_filtered:
+                output_record = False
+                break
+
             record.add_filter(filt.filter_name())
-
-        output_record = all(output_record) and len(output_record) > 0
-        if not keep:
-            output_record = not output_record
+            if short_circuit: break
+        
+        # If the record is to be kept (not dropping filtered, or record passed all filters)
         if output_record:
-            keepers.append(record)
+            filtered_records.append(record)
 
-    return keepers
+    return filtered_records
 
 def get_variant_genes(vcf_path):
     genes = {}
@@ -158,37 +174,44 @@ def vcf_to_gene_report(vcf_path):
         report.write(line + '\n')
     report.close()
 
+class VCFFilterException(Exception):
+    pass
+
 ## VCF Filter Classes
 class FilterByComparisonVCF(VCFFilterBase):
     '''Filter a VCF File by comparing its sites to another VCF File and operating on the intersection/difference'''
-    name = 'ref-vcf'
+    name = ''
+    default_ref_vcfs = None
+    default_intersection = False
 
     @classmethod
     def customize_parser(self, parser):
         parser.add_argument('--ref-vcfs', type=str, nargs="+", help="A VCF file against which to compare (may specify more than one)")
-        parser.add_argument('--intersection', type=bool, default=False, help="Instead of excluding intersecting sites, keep them and drop sites not found in both files.")
+        parser.add_argument('--intersection', action = "store_true", default=None, help="Instead of excluding intersecting sites, keep them and drop sites not found in both files.")
 
     def __init__(self, args):
-        self.reference_vcfs = args.ref_vcfs
+        self.reference_vcfs = args.ref_vcfs 
         if self.reference_vcfs is None:
+            raise VCFFilterException("No reference VCFs provided to FilterByComparisonVCF")
             self.reference_vcfs = []
         self.reference_variants =[]
         for ref_vcf in self.reference_vcfs:
             self.reference_variants += [var for var in vcf.Reader(open(ref_vcf))]
-        self.intersection = args.intersection
+        self.intersection = args.intersection if args.intersection else FilterByComparisonVCF.default_intersection
         self.reference_dict = defaultdict(lambda : defaultdict(bool))
         for var in self.reference_variants:
-            self.reference_dict[var.CHROM][(var.start,var.end,)] = True
+            self.reference_dict[var.CHROM][(var.start, var.end, tuple(map(str, var.ALT)))] = True
+        self.count = 0
 
     def __call__(self, record):
-        res = self.reference_dict[record.CHROM][(record.start,record.end,)]
-        if self.intersection and res:
+        res = self.reference_dict[record.CHROM][(record.start,record.end, tuple(map(str, record.ALT)))]
+        if self.intersection and not res:
             return record
-        elif not res:
+        elif res:
             return record
 
     def filter_name(self):
-        mode = "-inters-" if self.intersection else "-diff-"
+        mode = "conc-" if self.intersection else "dis-"
         return self.name + mode + '-'.join(self.reference_vcfs)
 
 class FilterByChromMatch(VCFFilterBase):
@@ -196,14 +219,16 @@ class FilterByChromMatch(VCFFilterBase):
     name = "regmatch"
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('--pattern', type=str, default='.*',
+        parser.add_argument('--pattern', type=str, required = False,
                 help='Regular Expression to match the CHROM column')
 
     def __init__(self, args):
+        if args.pattern is None:
+            raise VCFFilterException("Missing init value")
         self.pattern = args.pattern
 
     def __call__(self, record):
-        if re.search(self.pattern, record.CHROM):
+        if not re.search(self.pattern, record.CHROM):
             return record
 
     def filter_name(self):
@@ -212,45 +237,22 @@ class FilterByChromMatch(VCFFilterBase):
     def __repr__(self):
         return self.filter_name()
 
-class FilterAltSubstX(VCFFilterBase):
-    '''Remove variants whose only alternate allele is an X'''
-    name = "badalt-X"
-
-    @classmethod
-    def customize_parser(self, parser):
-        pass
-    
-    def __init__(self, args):
-        self.threshold = args.threshold
-        self.hard = args.hard
-
-    def __call__(self, record):
-        if "X" in map(str, record.ALT) and len(record.ALT) == 1 and self.hard == 0:
-            return record
-        elif "X" in map(str, record.ALT) and record.INFO['DP'][0] < self.threshold or len(record.ALT) == 1 and self.hard == 1:
-            return record
-        elif "X" in map(str, record.ALT):
-            return record
-        
-
-    def filter_name(self):
-        return "%s-%d-%r" % (self.name, self.threshold, self.hard)
-
-    def __repr__(self):
-        return self.filter_name()
-
 class FilterByAltCallDepth(VCFFilterBase):
     '''Filter a VCF File by limiting variants to only those with at least X% Alt calls'''
     
     name = 'alt-call-depth'
-    
+    default_alt_depth = 0.4
+
+
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('--alt-depth', type=float, default=0.4, 
+        parser.add_argument('--alt-depth', type=float, default=None, 
             help="The minimum percentage of all calls for a locus that must be an alternative allele (MAF)")
     
     def __init__(self, args):
-        self.alt_depth = args.alt_depth
+        if args.alt_depth is None:
+            raise VCFFilterException("Missing init value")
+        self.alt_depth = args.alt_depth if args.alt_depth else FilterByAltCallDepth.default_alt_depth
 
     def filter_name(self):
         return "%s-%.2f" % (self.name, self.alt_depth)
@@ -260,61 +262,68 @@ class FilterByAltCallDepth(VCFFilterBase):
         ref_reads = sum(record.INFO["DP4"][:2])
         alt_reads = sum(record.INFO["DP4"][2:])
 
-        if alt_reads / float(total_reads) >= self.alt_depth:
+        if not (alt_reads / float(total_reads) >= self.alt_depth):
             return record
 
 class FilterByReadDepth(VCFFilterBase):
     name = 'call-depth'
+    default_min_depth = 5
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('--min-depth', type=int, default=5, 
+        parser.add_argument('--min-depth', type=int, default = None, 
             help="The minimum number of reads that must map to a location to trust a given variant call [default:5]")
 
 
     def __init__(self, args):
-        self.min_depth = args.min_depth
+        if args.min_depth is None:
+            raise VCFFilterException("Missing init value")
+        self.min_depth = args.min_depth if args.min_depth else FilterByReadDepth.default_min_depth
 
     def filter_name(self):
         return "%s-%d" % (self.name, self.min_depth)
 
     def __call__(self, record):
-        if sum(record.INFO['DP4']) >= self.min_depth:
+        if not (sum(record.INFO['DP4']) >= self.min_depth):
             return record
 
 class FilterByCallQuality(VCFFilterBase):
     name = 'call-qual'
-
+    default_min_qual = 20
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('--min-qual', type=float, default=20, 
+        parser.add_argument('--min-qual', type=float, default=None, 
             help="The minimum Phred scale Quality score of a variant call")
 
     def __init__(self, args):
+        if args.min_qual is None:
+            raise VCFFilterException("Missing init value")
         self.min_qual = args.min_qual
 
     def filter_name(self):
         return "%s-%f" % (self.name, self.min_qual)
 
     def __call__(self, record):
-        if record.QUAL >= self.min_qual:
+        if not record.QUAL >= self.min_qual:
             return record
 
 class FilterByMappingQuality(VCFFilterBase):
     name = 'map-qual'
-
+    default_min_mq = 20
     @classmethod
     def customize_parser(self, parser):
-        parser.add_argument('--min-mq', type=float, default=20, 
+        parser.add_argument('--min-mq', type=float, default=None, 
             help="The minimum Phred scale Quality score of a read mapping for a variant call")
 
     def __init__(self, args):
+        if args.min_mq is None:
+            raise VCFFilterException("Missing init value")
         self.min_qual = args.min_mq
 
     def filter_name(self):
         return "%s-%f" % (self.name, self.min_qual)
 
     def __call__(self, record):
-        if record.INFO['MQ'] >= self.min_qual:
+        if not record.INFO['MQ'] >= self.min_qual:
             return record
 
 EXPOSED_FILTERS = [FilterByComparisonVCF,FilterByAltCallDepth,FilterByReadDepth,FilterByCallQuality,FilterByMappingQuality,]
@@ -324,20 +333,29 @@ def main():
     for filter_type in EXPOSED_FILTERS:
         filter_type.customize_parser(arg_parser)
     arg_parser.add_argument('vcf_file', help="Target VCF to filter")
+    arg_parser.add_argument('-d', '--drop', action = 'store_true', default = False, help = "Drop variants that fail any filters [default=False]")
+    arg_parser.add_argument('-p', '--purify', action = 'store_true', default = False, help = "Do not apply any filters to the input VCF, but drop all\
+     rows that have not passed previous filters")
     arg_parser.add_argument('-o', dest='output_file', default=None, help="The name of the output file. Defaults to the input file name + '.filt.vcf'")
+    #arg_parser.add_argument('-c', '--config', default = None, help = "Read parameters from a pathovar configuration file?")
     args = arg_parser.parse_args()
-    print(args)
-    filters = []
-    for filter_type in EXPOSED_FILTERS:
-        try:
-            filt = filter_type(args)
-            filters.append(filt)
-        except Exception, e:
-            pass
-            # print("Filter Failed", filter_type, e)
-            # Ignore failing to build a filter, since it means that the filter 
-            # was not initialized properly, and it should not be used in that case.
-    filter_vcf(args.vcf_file, filters, output_file = args.output_file)
+
+    out = None
+    if not args.purify:
+        filters = []
+        for filter_type in EXPOSED_FILTERS:
+            try:
+                filt = filter_type(args)
+                filters.append(filt)
+            except VCFFilterException, e:
+                pass
+                # print("Filter Failed", filter_type, e)
+                # Ignore failing to build a filter, since it means that the filter 
+                # was not initialized properly, and it should not be used in that case.
+        out = filter_vcf(args.vcf_file, filters, drop_filtered = args.drop, output_file = args.output_file)
+    else:
+        out = purify_vcf(args.vcf_file, output_file = args.output_file)
+    print out
 
 if __name__ == '__main__':
     main()

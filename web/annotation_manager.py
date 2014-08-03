@@ -2,8 +2,9 @@ import json
 import os
 import re
 import stat
+import time
 
-from pathovar.web.entrez_eutils import EntrezEUtilsDriver
+from pathovar.web.entrez_eutils import EntrezEUtilsDriver, EntrezEUtilsDriverException
 from pathovar.web.ncbi_xml.genome_annotations import GenBankFeatureFile
 from pathovar.web.ncbi_xml.gene import GenBankGeneFile, GenBankBioSystemFile, GenBankGeneToBioSystem
 
@@ -28,6 +29,9 @@ class EntrezAnnotationManager(object):
         except Exception, e:
             # An error occurred initializing the cache manager, use base class stubs instead
             self.cache_manager = AnnotationCacheManagerBase(**opts)
+
+    def save_manifest(self):
+        self.cache_manager.write_manifest()
 
     def genome_to_accesion_and_codon_table(self):
         mapping = {gid:{'accession': genome.accession, "codon_table":genome.genetic_code} for gid, genome in self.genome_annotations.items()}
@@ -55,13 +59,18 @@ class EntrezAnnotationManager(object):
         if locus_tag in self.gene_annotations:
             data = self.gene_annotations[locus_tag]
         elif self.cache_manager:
+            if self.cache_manager.check_manifest_missing(locus_tag, 'gene'): raise EntrezEUtilsDriverException("Cached: Record Not Available")
             try:
                 data = GenBankGeneFile(self.cache_manager.load_from_cache(locus_tag, "gene"), verbose = self.verbose, json=True)
                 self.gene_annotations[locus_tag] = data
             except CachedObjectMissingOrOutdatedException, e:
-                data = self.find_gene_comments_by_locus_tag(locus_tag, xml=True, verbose = self.verbose)
-                self.gene_annotations[locus_tag] = data
-                self.cache_manager.write_to_cache(data, locus_tag, "gene")
+                try:
+                    data = self.find_gene_comments_by_locus_tag(locus_tag, xml=True, verbose = self.verbose)
+                    self.gene_annotations[locus_tag] = data
+                    self.cache_manager.write_to_cache(data, locus_tag, "gene")
+                except EntrezEUtilsDriverException:
+                    self.cache_manager.save_record_missing(locus_tag, "gene")
+                    raise
         else: 
             data = self.find_annotations_by_gene_id(gid, xml=True, verbose = self.verbose)
             self.gene_annotations[gid] = data
@@ -70,13 +79,18 @@ class EntrezAnnotationManager(object):
     def get_biosystems(self, gene_db_id):
         biosystem_ids = None
         if self.cache_manager:
+            if self.cache_manager.check_manifest_missing(gene_db_id, "gene-biosystem"): raise EntrezEUtilsDriverException("Cached: Record Not Available")
             try:
                 gene_to_biosystem = GenBankGeneToBioSystem(self.cache_manager.load_from_cache(gene_db_id, "gene-biosystem"), json=True)
                 biosystem_ids = gene_to_biosystem.biosystem_ids
             except CachedObjectMissingOrOutdatedException:
-                gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_db_id(gene_db_id), gene_id = gene_db_id, xml = True)
-                self.cache_manager.write_to_cache(gene_to_biosystem, gene_db_id, "gene-biosystem")
-                biosystem_ids = gene_to_biosystem.biosystem_ids
+                try:
+                    gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_db_id(gene_db_id), gene_id = gene_db_id, xml = True)
+                    self.cache_manager.write_to_cache(gene_to_biosystem, gene_db_id, "gene-biosystem")
+                    biosystem_ids = gene_to_biosystem.biosystem_ids
+                except EntrezEUtilsDriverException:
+                    self.cache_manager.save_record_missing(gene_db_id, 'gene-biosystem')
+                    raise
         else:
             gene_to_biosystem = GenBankGeneToBioSystem(self.entrez_handle.find_biosystem_ids_by_gene_db_id(gene_db_id), gene_id = gene_db_id, xml = True)
             biosystem_ids = gene_to_biosystem.biosystem_ids
@@ -86,13 +100,18 @@ class EntrezAnnotationManager(object):
             if bsid in self.biosystem_annotations:
                 data = self.biosystem_annotations[bsid]
             elif self.cache_manager:
+                if self.cache_manager.check_manifest_missing(bsid, "biosystems"): raise EntrezEUtilsDriverException("Cached: Record Not Available")
                 try:
                     data = GenBankBioSystemFile(self.cache_manager.load_from_cache(bsid, "biosystem"), verbose = self.verbose, json=True)
                     self.biosystem_annotations[bsid] = data
                 except CachedObjectMissingOrOutdatedException, e:
-                    data = GenBankBioSystemFile(self.entrez_handle.find_biosystem_by_bsid(bsid), xml=True, verbose = self.verbose)
-                    self.biosystem_annotations[bsid] = data
-                    self.cache_manager.write_to_cache(data, bsid, "biosystem")
+                    try:
+                        data = GenBankBioSystemFile(self.entrez_handle.find_biosystem_by_bsid(bsid), xml=True, verbose = self.verbose)
+                        self.biosystem_annotations[bsid] = data
+                        self.cache_manager.write_to_cache(data, bsid, "biosystem")
+                    except EntrezEUtilsDriverException:
+                        self.cache_manager.save_record_missing(bsid, "biosystems")
+                        raise
             else:
                 data = GenBankBioSystemFile(self.entrez_handle.find_biosystem_by_bsid(bsid), xml=True, verbose = self.verbose)
                 self.biosystem_annotations[bsid] = data
@@ -146,6 +165,7 @@ class AnnotationCacheManagerBase(object):
     def __init__(self, **opts):
         self.cache_dir = opts.get("cache_dir", AnnotationCacheManagerBase.DEFAULT_CACHE_DIR)
         self.verbose = opts.get('verbose', False)
+        self.manifest = {}
 
     ##
     # Stub
@@ -155,6 +175,18 @@ class AnnotationCacheManagerBase(object):
     ##
     # Stub
     def write_to_cache(self, data, query_id, data_type):
+        pass
+
+    def load_manifest(self):
+        pass
+
+    def write_manifest(self):
+        pass
+
+    def check_manifest_missing(self, query_id, data_type):
+        return False
+
+    def save_record_missing(self, query_id, data_type):
         pass
 
 class JSONAnnotationCacheManager(object):
@@ -178,6 +210,31 @@ class JSONAnnotationCacheManager(object):
                                      stat.S_IROTH | stat.S_IWOTH)
         except OSError, e:
             pass
+        self.load_manifest()
+
+    def load_manifest(self):
+        manifest_file = self.cache_dir + os.sep + 'manifest.json'
+        if os.path.exists(manifest_file):
+            self.manifest = json.load(open(manifest_file))
+        else:
+            json.dump(dict(missing=dict(), meta=dict()), open(manifest_file,'wb'))
+            os.chmod(manifest_file, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IWGRP | \
+                                     stat.S_IROTH | stat.S_IWOTH)
+            self.manifest = json.load(open(manifest_file))
+
+    def write_manifest(self):
+        manifest_file = self.cache_dir + os.sep + 'manifest.json'
+        json.dump(self.manifest, open(manifest_file, 'w'))
+
+    def save_record_missing(self, query_id, data_type):
+        if data_type not in self.manifest['missing']:
+            self.manifest['missing'][data_type] = {}
+        self.manifest['missing'][data_type][query_id] = 1 # This value could be a date to remove the query from blacklist, but json dates aren't easy yet
+
+    def check_manifest_missing(self, query_id, data_type):
+        if data_type not in self.manifest['missing']:
+            self.manifest['missing'][data_type] = {}
+        return query_id in self.manifest['missing'][data_type]
 
     def load_from_cache(self, query_id, data_type):
         cache_file = self.cache_dir + os.sep + 'gene_id-' + query_id

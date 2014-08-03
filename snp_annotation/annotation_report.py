@@ -16,7 +16,8 @@ BIOSYS_DB = "biosystems"
 def variant_to_dict(var):
     return {
         "start": var.start, "end": var.end, "ref": str(var.REF), "alts":map(str, var.ALT), 
-        "call_quality": var.QUAL, "depth": var.INFO["DP4"], "_info": var.INFO, "_format": var.FORMAT,
+        "call_quality": var.QUAL, "depth": var.INFO["DP4"], "filters": var.FILTER, 
+        "_info": var.INFO, "_format": var.FORMAT,
             "_var_type": var.var_type, 
             "var_type": ("snp" if len(str(var.REF)) == len(map(str, var.ALT)[0]) 
                     else ("insertion" if len(str(var.REF)) < len(map(str, var.ALT)[0]) 
@@ -206,6 +207,7 @@ class AnnotationReport(object):
             except EntrezEUtilsDriverException, e:
                 pass
                 #if self.verbose: print(str(gene) + " is not in Gene database. (No Record)")
+        self.annotation_manager.save_manifest()
 
     ##
     # Get Entrez BioSystems (like KEGG Pathways) using the Entrez Gene ID of the sequence.
@@ -224,6 +226,7 @@ class AnnotationReport(object):
             except EntrezEUtilsDriverException, e:
                 #if self.verbose: print(str(gene) + " is not in BioSystem database. (No Record)")
                 pass
+        self.annotation_manager.save_manifest()
 
 
     ##
@@ -352,11 +355,20 @@ class AnnotationReport(object):
             for gid, entry in org_data['entries'].items():
                 normalize_entry_model(entry)
 
-    def score_all_entries(self, blast_max = 20, snp_max = 20, coverage_max = 20, var_score_dict=None, blast_value = 2, coverage_value = 1):
+    def score_all_entries(self, blast_max = 20, snp_max = 20, coverage_max = 20, 
+        var_score_dict = None, blast_value = 2, coverage_value = 1,
+        ignore_filter_set = None):
+        if(ignore_filter_set is None):
+            ignore_filter_set = set()
+        else:
+            ignore_filter_set = set(ignore_filter_set)
         if self.verbose : print("Running scoring heuristic")
         for org_name, org_data in self.data.items():
             for gid, entry in org_data['entries'].items():
-                score_heuristic_cap(entry, blast_max, snp_max, coverage_max, var_score_dict, blast_value, coverage_value)
+                score_heuristic_cap(entry, blast_max, snp_max, coverage_max, 
+                    var_score_dict, blast_value, coverage_value, ignore_filter_set)
+
+        return None
 
     ##
     # Consume coverage data to get mean coverage for each gene that contains a variant
@@ -445,6 +457,14 @@ class AnnotationReport(object):
         for org_name, org_val in result_obj.items():
             for gene_name, gene_val in org_val.items():
                 pass
+
+    def text_search(self, pattern):
+        results = []
+        for gene in self:
+            match = re.search(pattern, str(gene))
+            if match is not None: 
+                results.append(gene)
+        return results
 
 class AnnotationReportException(Exception):
     pass
