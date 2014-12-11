@@ -1,9 +1,9 @@
-test:
-	@echo Running Tests
-	@python -m unittest discover
+# Builds the distributable version
 
-docs:
-	doxygen doxygen_config
+build-package: 
+	python setup.py sdist -k
 
-clean:
-	rm -r docs/
+clean: 
+	rm -r PathoVar-0.4.1
+	rm -r build/
+
