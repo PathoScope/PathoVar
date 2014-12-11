@@ -9,7 +9,7 @@ from pathovar import utils
 from pathovar.utils.vcf_utils import EXPOSED_FILTERS
 from pathovar.snp_caller import is_bam
 
-argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100), 
+argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100),
     conflict_handler='resolve')
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
 argparser.add_argument("sam_file", help = "The alignment file to call variants from [Required]")
@@ -33,8 +33,8 @@ def call_snps(args, **opts):
     if args.snp_caller == "samtools":
         from pathovar.snp_caller import samtools_snp_caller
         snp_caller_driver = samtools_snp_caller.SamtoolsSNPCaller(bin_dir = args.snp_caller_path, **opts)
-    variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes, 
-        org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids, 
+    variant_file = snp_caller_driver.call_snps(args.sam_file, source = args.reference_genomes,
+        org_names_reg = args.org_names, tax_ids_reg = args.tax_ids, gene_ids_reg = args.gene_ids,
         keep_all = args.keep_all_sequences)
     consensus_sequences = variant_file + ".cns.fq"
     # variant_file is a list of vcf files called, but only one should be generated in this case
@@ -45,7 +45,8 @@ def call_snps(args, **opts):
         result_files['coverage'] = coverage_json
     return result_files
 
-def main(args):
+def main():
+    args = argparser.parse_args()
     opts = {}
     opts['verbose'] = args.verbose
     opts['clean'] = args.clean
@@ -57,5 +58,4 @@ def main(args):
     if args.verbose: print('SNP Calling Done (%s sec)' % str(snp_called_time - start_clock))
 
 if __name__ == '__main__':
-    args = argparser.parse_args()
-    main(args)
+    main()

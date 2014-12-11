@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 
 import sys
 import os
@@ -18,13 +18,12 @@ from pathovar.utils.vcf_utils import FilterByMappingQuality
 from pathovar.utils.vcf_utils import FilterByCallQuality
 from pathovar.utils.vcf_utils import FilterByComparisonVCF
 
-argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100), 
-	conflict_handler='resolve')
+argparser = argparse.ArgumentParser(prog="pathovar", formatter_class= lambda prog: argparse.HelpFormatter(prog, width=100),	conflict_handler='resolve')
 argparser.add_argument("-v", "--verbose", action = "store_true", required = False)
 argparser.add_argument("sam_file", help = "The alignment file to call variants from [Required]")
 argparser.add_argument('--clean', action = "store_true", help="Clean up intermediary files after they're finished being used [default:False]")
 argparser.add_argument("-c", "--config", action = "store", default = None, help = "Path to the pathovar.conf.json configuration file to use [default:System Wide]")
-argparser.add_argument("--test", action = "store_true", required = False, help="Enter IPython Interactive Session after execution completes [Development Only]")
+argparser.add_argument("--test", action = "store_true", required = False, help="Enter IPython Interactive Session after execution completes")
 
 target_args = argparser.add_argument_group("Target Organism Selection")
 target_args.add_argument('-r',"--reference-genomes", metavar = "REF", action = "store", required=True, help = "path to a fasta file containing all reference genomes to call against. [Required]")
@@ -49,8 +48,8 @@ snp_filt_args = argparser.add_argument_group("Variant Filtering Options")
 for filter_type in EXPOSED_FILTERS:
 	filter_type.customize_parser(snp_filt_args)
 
-def main(args):
-
+def main():
+	args = argparser.parse_args()
 	configuration = get_config(args.config, alert = True)
 
 	opts = {}
@@ -106,5 +105,4 @@ def main(args):
 		IPython.embed()
 
 if __name__ == '__main__':
-	args = argparser.parse_args()
-	main(args)
+	main()

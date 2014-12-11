@@ -12,6 +12,14 @@ setup(
     data_files=[('pathovar/visualize', ['pathovar/visualize/template.html']),
                 ('pathovar/tests/data', ['pathovar/tests/data/klebsiella-pneumoniae_ti.fa',
                                          'pathovar/tests/data/updated_outalign.sam.filt.sam'])],
+    entry_points={
+        "console_scripts": [
+            "pathovar-config = pathovar.setup_external_data.__main__:main",
+            "pathovar-call = pathovar.snp_caller.__main__:main",
+            "pathovar-annotate = pathovar.snp_annotation.__main__:main",
+            "pathovar = pathovar.__main__:main"
+            ]
+        },
     zip_safe=False,
     install_requires=[
       "PyVCF >= 0.6.4",

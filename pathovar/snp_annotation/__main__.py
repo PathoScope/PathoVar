@@ -34,10 +34,9 @@ argparser.add_argument('--snpeff-path', default = None, action = 'store', requir
 argparser.add_argument('--blast-path', default = None, action = 'store', required = False, help = 'Path to the NCBI BLAST executables. [default: search system path]')
 
 CatchError = Exception
-CatchError = ArithmeticError
 
-def main(args):
-
+def main():
+	args = argparser.parse_args()
 	configuration = get_config(args.config, alert = True)
 
 	#if args.verbose: print(args)
@@ -69,8 +68,8 @@ def main(args):
 
 	# Retrieve the annotated VCF and the VariantLocator instance for future reuse
 	anno_vcf, variant_locator_driver = find_variant_locations(args.vcf_file, annotation_manager_driver, **opts)
-	
-	annotation_report_driver = run_annotation_report(args, anno_vcf, variant_locator_driver, 
+
+	annotation_report_driver = run_annotation_report(args, anno_vcf, variant_locator_driver,
 		annotation_manager_driver, coverage_data = coverage_data, **opts)
 
 	anno_json = annotation_report_driver.to_json_file()
@@ -94,14 +93,14 @@ def run_snpeff(args, anno_vcf, annotation_report_driver, **opts):
 		if args.verbose: print("Running snpEff")
 		if args.snpeff_path is None:
 			raise Exception("snpEff path not set. Step Not Run.")
-		eff_data = snpeff_driver.main(args.snpeff_path, anno_vcf, tempDir = None, 
+		eff_data = snpeff_driver.main(args.snpeff_path, anno_vcf, tempDir = None,
 			gidMap = annotation_report_driver.annotation_manager.genome_to_accesion_and_codon_table(), **opts)
 		annotation_report_driver.consume_snpeff_results(eff_data)
 	except snpeff_driver.snpEffException, e:
 		print("An error occurred while running SnpEff: %s" % e)
 
 def run_annotation_report(args, anno_vcf, variant_locator_driver, annotation_manager_driver, coverage_data = None, **opts):
-	annotation_report_driver = AnnotationReport(vcf_path=anno_vcf,variant_locator=variant_locator_driver, 
+	annotation_report_driver = AnnotationReport(vcf_path=anno_vcf,variant_locator=variant_locator_driver,
 												annotation_manager = annotation_manager_driver, **opts)
 	annotation_report_driver.merge_intergenic_record_chunks()
 	try:
@@ -124,7 +123,7 @@ def run_annotation_report(args, anno_vcf, variant_locator_driver, annotation_man
 			from pathovar.snp_annotation.comprehensive_antibiotic_resistance_database_annotator import CARDProteinBlastAnnotator
 			storage_path = (conf['database_storage_directory'] + os.sep + external_database_conf["comprehensive_antibiotic_resistance_database"]['storage_path'])
 			card_blast = CARDProteinBlastAnnotator(storage_path = storage_path,
-													bin_dir = args.blast_path, 
+													bin_dir = args.blast_path,
 													clean = args.clean)
 			card_blast.query_with_proteins(ref_prot_fa)
 			waiting_jobs.append(card_blast)
@@ -132,11 +131,11 @@ def run_annotation_report(args, anno_vcf, variant_locator_driver, annotation_man
 		if "drugbank" in enabled_databases:
 			from pathovar.snp_annotation.drugbank_annotator import DrugBankProteinBlastAnnotator
 			storage_path = (conf['database_storage_directory']  + os.sep +  external_database_conf["drugbank"]['storage_path'])
-			drugbank_blast = DrugBankProteinBlastAnnotator(storage_path = storage_path, 
-															bin_dir = args.blast_path, 
+			drugbank_blast = DrugBankProteinBlastAnnotator(storage_path = storage_path,
+															bin_dir = args.blast_path,
 															clean = args.clean)
 			drugbank_blast.query_with_proteins(ref_prot_fa)
-			waiting_jobs.append(drugbank_blast)			
+			waiting_jobs.append(drugbank_blast)
 
 		annotation_report_driver.get_entrez_gene_annotations()
 		annotation_report_driver.get_entrez_biosystem_pathways()
@@ -149,7 +148,7 @@ def run_annotation_report(args, anno_vcf, variant_locator_driver, annotation_man
 			except BlastDriverException, e:
 				print("Waiting error", e)
 
-		# Consume the completed Blast searches 
+		# Consume the completed Blast searches
 		for external_database in external_database_results:
 			for category in external_database_results[external_database]:
 				annotation_report_driver.consume_blast_results(category, external_database_results[external_database][category])
@@ -167,4 +166,4 @@ def run_annotation_report(args, anno_vcf, variant_locator_driver, annotation_man
 
 
 if __name__ == '__main__':
-	main(argparser.parse_args())
+	main()

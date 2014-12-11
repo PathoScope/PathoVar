@@ -28,7 +28,7 @@ def get_config(path = None, alert = False):
                 print("Using default configuration file")
             conf = get_config(DEFAULT_CONFIG_PATH)
     if (("version" not in conf) or (conf['version'] != DEFAULT_CONFIG['version'])) and alert:
-        print("Your configuration is outdated, please rerun `python -m pathovar.setup` to update it!")
+        print("Your configuration is outdated, please rerun `pathovar-config or python -m pathovar.setup_external_database` to update it!")
     conf_defaultdict = defaultdict(lambda : None)
     conf_defaultdict.update(conf)
     return conf_defaultdict
@@ -79,16 +79,16 @@ DEFAULT_CONFIG = {
     },
     "heuristic_parameters": {
         "var_score_dict": {
-            "LOW": 0.1, 
+            "LOW": 0.1,
             "UNKNOWN": 1,
-            "MODERATE": 1, 
-            "MODIFIER": 1, 
+            "MODERATE": 1,
+            "MODIFIER": 1,
             "HIGH": 2
         },
         "blast_max": 20,
         "snp_max": 20,
         "coverage_max": 20,
-        "blast_value": 2, 
+        "blast_value": 2,
         "coverage_value": 1
     },
     "filter_parameters" :{
@@ -103,13 +103,13 @@ DEFAULT_CONFIG = {
         "comprehensive_antibiotic_resistance_database": {
             "data_urls" : {
                 "nucleotide" : [
-                "http://arpcard.mcmaster.ca/blast/db/nucleotide/AR-genes.fa.gz", 
-                "http://arpcard.mcmaster.ca/blast/db/nucleotide/AT-genes.fa.gz", 
+                "http://arpcard.mcmaster.ca/blast/db/nucleotide/AR-genes.fa.gz",
+                "http://arpcard.mcmaster.ca/blast/db/nucleotide/AT-genes.fa.gz",
                 "http://arpcard.mcmaster.ca/blast/db/nucleotide/ABS-genes.fa.gz"
-                ], 
+                ],
                 "protein":[
                 "http://arpcard.mcmaster.ca/blast/db/protein/AR-polypeptides.fa.gz",
-                "http://arpcard.mcmaster.ca/blast/db/protein/AT-polypeptides.fa.gz", 
+                "http://arpcard.mcmaster.ca/blast/db/protein/AT-polypeptides.fa.gz",
                 "http://arpcard.mcmaster.ca/blast/db/protein/ABS-polypeptides.fa.gz"
                 ],
                 "other":[
