@@ -1,2 +1,7 @@
+docs/
 *.pyc
-
+databases/
+*.*~
+.anno_cache/
+external_databases.json
+tests/data/*.xml
