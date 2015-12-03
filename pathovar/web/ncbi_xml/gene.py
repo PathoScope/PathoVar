@@ -47,7 +47,7 @@ class GenBankGeneFile(object):
         self.gene_prot_name = self.parser.find(".//Prot-ref_name_E")
         if self.gene_prot_name is not None:
             self.gene_prot_name = to_text_strip(self.gene_prot_name)
-        self.comments = [GenBankGeneFileComment(x,self, xml=True) for x in self.parser.findall('.//Gene-commentary_heading/..') 
+        self.comments = [GenBankGeneFileComment(x,self, xml=True) for x in self.parser.findall('.//Gene-commentary_heading/..')
             if to_text_strip(x) in HEADINGS]
         for comment in self.comments:
             self.pathways.extend(comment.pathways)
@@ -123,7 +123,7 @@ class GenBankGeneFileComment(object):
                 go_term = GOTerm(db, id, term)
                 entry_terms.append(go_term)
             go_terms[category_name] = entry_terms
-        
+
         self.go_terms = go_terms
 
     def __repr__(self):
@@ -136,7 +136,7 @@ class Pathway(object):
         self.db = db
         self.id = id
         self.url = url
-    
+
     def __repr__(self):
         rep = "Pathway(%(db)s|%(id)s|%(name)s)" % self.__dict__
         return rep
@@ -172,7 +172,7 @@ class GenBankGeneToBioSystem(object):
             self._from_json(data)
 
     def _parse_xml(self, data):
-        self.parser = ET.fromstring(data)
+        self.parser = ET.fromstring(str(data))
         self.gene_id = self.opts['gene_id']
         self.biosystem_ids = list(set([link.text for link in self.parser.findall(".//Id") if link.text != self.gene_id]))
 
@@ -217,7 +217,7 @@ class GenBankBioSystemFile(object):
     def to_json_safe_dict(self):
         data_dict = self.__dict__
         data_dict.pop("parser", None)
-        
+
         data_dict['schema_version'] = GenBankBioSystemFile.CACHE_SCHEMA_VERSION
         return data_dict
 
