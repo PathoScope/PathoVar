@@ -9,9 +9,7 @@ setup(
     url='https://bitbucket.org/pathovar/pathovar',
     packages=find_packages(),
     include_package_data=True,
-    data_files=[('pathovar/visualize', ['pathovar/visualize/template.html']),
-                ('pathovar/tests/data', ['pathovar/tests/data/klebsiella-pneumoniae_ti.fa',
-                                         'pathovar/tests/data/updated_outalign.sam.filt.sam'])],
+    data_files=[('pathovar/visualize', ['pathovar/visualize/template.html'])],
     entry_points={
         "console_scripts": [
             "pathovar-config = pathovar.setup_external_data.__main__:main",

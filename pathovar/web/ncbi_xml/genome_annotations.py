@@ -13,6 +13,7 @@ from pathovar.web.ncbi_xml import ET, to_text, to_text_strip, to_int, to_attr_va
 # the XML definition of a GenBank flat file.
 class GenBankFeatureFile(object):
     CACHE_SCHEMA_VERSION = '0.3.12'
+
     def __init__(self, data, **opts):
         self.opts = opts
         self.verbose = opts.get('verbose', False)
@@ -39,9 +40,12 @@ class GenBankFeatureFile(object):
     def _parse_xml(self, xml):
         timer = time()
         self.parser = ET.fromstring(xml)
-        if self.verbose: print("XML Digested (%s sec)" % str(time() - timer))
-        if self.verbose: print("Searching for Chromosome")
+        if self.verbose:
+            print("XML Digested (%s sec)" % str(time() - timer))
+        if self.verbose:
+            print("Searching for Chromosome")
         self.gid = self.parser.find(".//Seq-id_gi").text
+        self.has_chromosome = False
         if self.mol_type == 'nucl':
             self.org_name = self.parser.find(".//Org-ref_taxname").text
             org_mod_name = self.parser.find(".//OrgName_mod")
@@ -52,17 +56,17 @@ class GenBankFeatureFile(object):
                 org_mod_subname = org_mod_name.find(".//OrgMod_subname")
                 org_mod_subname = org_mod_subname.text if org_mod_subname is not None else ""
                 self.sub_name += " " + org_mod_subtype + " " + org_mod_subname
-            
+
             subsource = self.parser.find(".//BioSource_subtype")
             if subsource is not None:
                 subtype = subsource.findall(".//SubSource_subtype")
                 subtype_name = subsource.findall(".//SubSource_name")
-                #subtype = to_attr_value(subtype, 'value') if subtype is not None else ''
-                #subtype_name = subtype_name.text if subtype_name is not None else ''
+                # subtype = to_attr_value(subtype, 'value') if subtype is not None else ''
+                # subtype_name = subtype_name.text if subtype_name is not None else ''
                 for i in range(len(subtype_name)):
-                    #subtype_i = subtype[i]
+                    # subtype_i = subtype[i]
                     subtype_name_i = subtype_name[i]
-                    #subtype_i = to_attr_value(subtype_i, 'value') if subtype_i is not None else ''
+                    # subtype_i = to_attr_value(subtype_i, 'value') if subtype_i is not None else ''
                     subtype_name_i = subtype_name_i.text if subtype_name_i is not None else ''
                     self.sub_name += ' ' + subtype_name_i
             db_tags = self.parser.find(".//Org-ref_db")
@@ -75,30 +79,39 @@ class GenBankFeatureFile(object):
                     tag_data = to_text_strip(tag.find(".//Dbtag_tag"))
                     self.db_tag_data[db_name] = tag_data
 
-
             self.genetic_code = int(self.parser.find(".//OrgName_gcode").text)
-            self.accession = self.parser.find(".//Textseq-id_accession").text + '.' + self.parser.find(".//Textseq-id_version").text
-        #if self.mol_type == 'nucl':
+            self.accession = self.parser.find(".//Textseq-id_accession").text + '.' + self.parser.find(
+                ".//Textseq-id_version").text
+
             self.chromosome = self.parser.findall('.//IUPACna')
-            if self.chromosome:
+            self.has_chromosome = len(self.chromosome) != 0 and self.chromosome[0] != ""
+            if self.has_chromosome:
                 self.chromosome = ''.join(map(to_text_strip, self.chromosome))
-                if self.verbose: print("Found, %d bp" % len(self.chromosome))
+                if self.verbose:
+                    print("Found, %d bp" % len(self.chromosome))
+
             chromosome_len_parity = sum(map(to_int, self.parser.findall('.//Seq-literal_length')))
 
-            if len(self.chromosome) != chromosome_len_parity and chromosome_len_parity != 0:
-                if self.verbose: print("Chromosome Length Parity Error (%d != %d). Sequence Data Missing. Attempting to fix" % (len(self.chromosome), chromosome_len_parity))
+            if self.has_chromosome and len(self.chromosome) != chromosome_len_parity and chromosome_len_parity != 0:
+                if self.verbose:
+                    print("Chromosome Length Parity Error (%d != %d). Sequence Data Missing. Attempting to fix" % (
+                        len(self.chromosome), chromosome_len_parity))
                 eutils_handle = entrez_eutils.EntrezEUtilsDriver(**self.opts)
                 data = eutils_handle.find_nucleotides_by_gene_id(self.gid)
                 fasta_seq = (data.split('\n'))
                 replace_chromosome = ''.join(fasta_seq[1:])
                 if len(replace_chromosome) == chromosome_len_parity:
-                    if self.verbose: print("Chromosome Length Parity Fixed")
+                    if self.verbose:
+                        print("Chromosome Length Parity Fixed")
                     self.chromosome = replace_chromosome
                 else:
                     raise GenBankFileChromosomeLengthMismatch("Could not resolve Chromosome Length Parity Error")
 
-        if self.verbose: print("Gathering Entries and Features")
-        self.entries = {ent.gid : ent for ent in map(lambda x: GenBankSeqEntry(x, self, xml = True), self.parser.findall(".//Seq-entry")) }
+        if self.verbose:
+            print("Gathering Entries and Features")
+        self.entries = {ent.gid: ent for ent in map(
+            lambda x: GenBankSeqEntry(x, self, xml=True), self.parser.findall(
+                ".//Seq-entry"))}
         self.genome_entry = self.entries[self.gid]
         # Create Features for each Seq-feat tag, both in the Genome level sequence and the individuals
         self.features = map(lambda x: GenBankFeature(x, self), self.parser.findall(".//Seq-feat"))
@@ -106,57 +119,57 @@ class GenBankFeatureFile(object):
         # Features are subsets of Entries. It would be a good idea to compress them to a single entity
         # later. Entries capture finer resolution details about a particular gene
         for feature in self.features:
-             if feature.gid in self.entries:
-                 entry = self.entries[feature.gid]
-                 feature.title = entry.title
-                 entry.strand = feature.strand
-        
+            if feature.gid in self.entries:
+                entry = self.entries[feature.gid]
+                feature.title = entry.title
+                entry.strand = feature.strand
+
         genome_level_features = {}
         sequence_level_features = []
-        
+
         for feat in self.features:
             if "complete genome" in feat.title:
                 if feat.start not in genome_level_features:
                     genome_level_features[feat.start] = feat
-                else: 
+                else:
                     genome_level_features[feat.start].merge_features(feat)
             else:
                 sequence_level_features.append(feat)
-        
+
         # Each feature occurs multiple times in the file, redundant with its multiple regions. The complete
-        # genomic span is the largest span. This works for single-span entities. 
-        
-        if self.verbose: print("Computing Genomic Coordinates")
+        # genomic span is the largest span. This works for single-span entities.
+        if self.verbose:
+            print("Computing Genomic Coordinates")
         feature_dict = {}
         for feat in sequence_level_features:
             # Discard feature if its gid matches the genome gid
-            if feat.gid == self.gid: continue
+            if feat.gid == self.gid:
+                continue
             if feat.starts:
                 if feat.gid not in feature_dict:
                     feature_dict[feat.gid] = feat
                 else:
                     if (feat.end - feat.start) > (feature_dict[feat.gid].end - feature_dict[feat.gid].start):
                         feature_dict[feat.gid] = feat
-                    if self.mol_type == 'nucl' and feat.end > len(self.chromosome):
+                    if self.has_chromosome and self.mol_type == 'nucl' and feat.end > len(self.chromosome):
                         raise GenBankFileChromosomeLengthMismatch("%r exceeds chromosome size" % feat)
-        
+
         sequence_level_features = feature_dict.values()
         by_start = {f.start: f for f in sequence_level_features}
-        
+
         final_features = {}
         # Reduce all features to a non-redundant set based on
-        # start position and identity. 
+        # start position and identity.
         for pos in genome_level_features:
             try:
                 final_features[by_start[pos].gid] = genome_level_features[pos]
                 final_features[by_start[pos].gid].gid = by_start[pos].gid
                 genome_level_features[pos].gid = by_start[pos].gid
-            except KeyError, e:
+            except KeyError:
                 # Using a compound of title + locus tag in place of absent gid
                 genome_level_features[pos].title = genome_level_features[pos].gene_ref_tag
                 final_features[genome_level_features[pos].title] = genome_level_features[pos]
                 final_features[genome_level_features[pos].title].gid = genome_level_features[pos].title
-
 
         merged_features = final_features.values()
         # If there were no genome level features labeled, then nothing is kept.
@@ -175,10 +188,12 @@ class GenBankFeatureFile(object):
                 if feat.gid is not None or feat.gene_ref_tag is not None:
                     entry = feat.upgrade_to_entry()
                     self.entries[entry.gid] = entry
-        
+
         # Remove whole-reference entry
         self.entries.pop(self.gid)
-        self.sorted_genes = sorted([gene for gid, gene in self.entries.items()], key=lambda x: x.start)
+        self.sorted_genes = sorted([gene for gid, gene in self.entries.items()
+                                    if gene.start is not None or gene.starts is not None],
+                                   key=lambda x: x.start)
 
     def _from_json(self, json_dict):
         timer = time()
@@ -192,6 +207,7 @@ class GenBankFeatureFile(object):
         self.sorted_genes = json_dict["sorted_genes"]
         self.sorted_genes = [self.entries[gid] for gid in self.sorted_genes]
         self.db_tag_data = json_dict['db_tag_data']
+        self.has_chromosome = json_dict.get("has_chromosome", True)
         if self.verbose: print("Loading from JSON Complete (%rs)" % (time() - timer))
 
 
@@ -204,6 +220,7 @@ class GenBankFeatureFile(object):
         data_dict["name"] = self.org_name
         data_dict['sub_name'] = self.sub_name
         data_dict['genetic_code'] = self.genetic_code
+        data_dict['has_chromosome'] = self.has_chromosome
         if self.entries is None: 
             print("Entries is None")
         data_dict['entries'] = {
@@ -319,8 +336,6 @@ class GenBankFeature(object):
 
         self.is_rna = True if self.is_rna is not None else False
 
-        #self.__dict__.pop('parser')
-    
     def merge_features(self, other):
         merge_dict = dict()
         hold = self.components
@@ -328,7 +343,6 @@ class GenBankFeature(object):
            merge_dict[key] = take_def(key, self.__dict__, other.__dict__)
         self.__dict__ = merge_dict
         self.components = (hold, self, other)
-        
 
     def upgrade_to_entry(self):
         upgrade_dict = dict()
@@ -386,12 +400,12 @@ class GenBankSeqEntry(object):
 
         self.amino_acid_sequence = None
         # Prune later once starts and ends are set
-        self.nucleotide_sequence = None 
+        self.nucleotide_sequence = None
 
         self.title = None
         self.annotations = {}
         self.comments = []
-        
+
         self._id = None
         self._desc = None
         self._inst = None
